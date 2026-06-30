@@ -1,0 +1,53 @@
+{# Account triage + recommendations. Expects `account` in context. #}
+{% from "_reccards.html" import rec_list %}
+{% set asum = account.summary %}
+<div class="section-title">Priorities: what to work on first</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:22px">
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot red"></span>Fix first <span class="info" data-tip="Highest-volume campaigns with critical problems: they waste the most sends until fixed.">i</span></h2></div>
+    <div>
+      {% for it in account.triage.fix_first %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">Nothing critical, nice work.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot green"></span>Scale <span class="info" data-tip="Campaigns already converting well: increase volume or clone them.">i</span></h2></div>
+    <div>
+      {% for it in account.triage.scale %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">No clear winners yet.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot gray"></span>Review / pause <span class="info" data-tip="High send volume but no interest: pause and rethink before spending more.">i</span></h2></div>
+    <div>
+      {% for it in account.triage.review %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">None flagged.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if account.recommendations %}
+<div class="table-wrap">
+  <div class="table-header">
+    <h2>Account recommendations <span class="info" data-tip="Systemic patterns across all campaigns: deliverability, subjects, copy, A/B coverage, and your best performers to replicate. Per-campaign actions live on each campaign page.">i</span></h2>
+    <span class="muted" style="font-size:12px">
+      {% if asum.counts.critical %}{{ asum.counts.critical }} critical · {% endif %}
+      {% if asum.counts.important %}{{ asum.counts.important }} important · {% endif %}
+      {{ asum.counts.opportunity }} opportunities
+    </span>
+  </div>
+  {{ rec_list(account.recommendations, 3) }}
+</div>
+{% endif %}

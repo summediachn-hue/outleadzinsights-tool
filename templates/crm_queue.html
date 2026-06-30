@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Action Queue · CRM{% endblock %}
+{% block topbar %}Action queue · today's priority leads{% endblock %}
+
+{% block content %}
+<style>
+.q-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;letter-spacing:-.3px}
+.q-av.reply{background:var(--red-bg);color:var(--red)}
+.q-av.wake{background:var(--yellow-bg);color:var(--yellow)}
+.q-av.cold{background:var(--orange-bg);color:var(--orange)}
+.qcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:9px;box-shadow:var(--shadow-sm);transition:opacity .3s,box-shadow .12s}
+.qcard:hover{box-shadow:var(--shadow-md)}
+.qcard.reply{border-left:3px solid var(--red)}
+.qcard.wake{border-left:3px solid var(--yellow)}
+.qcard.cold{border-left:3px solid var(--orange)}
+.qcard-main{display:flex;align-items:flex-start;gap:13px}
+.qcard-body{flex:1;min-width:0}
+.qcard-name{font-size:13.5px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.qcard-co{font-size:13px;font-weight:400;color:var(--muted)}
+.qcard-meta{font-size:12px;color:var(--dim);margin-top:3px}
+.qcard-snippet{font-size:12.5px;color:var(--muted);margin-top:7px;line-height:1.5;font-style:italic;background:var(--surface2);border-radius:7px;padding:7px 11px;border-left:2px solid var(--border2)}
+.qcard-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0}
+.qcard-time{font-size:11.5px;color:var(--dim);font-weight:500;white-space:nowrap}
+.qa-toggle{background:none;border:1px solid var(--border2);border-radius:7px;color:var(--muted);font-size:11.5px;padding:4px 9px;cursor:pointer;font-family:inherit;margin-top:4px}
+.qa-toggle:hover{color:var(--text);background:var(--surface2)}
+.qa-panel{border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:none}
+.qa-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap}
+.qa-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;width:58px;flex-shrink:0}
+.qa-btn{font-size:12px;padding:4px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;font-family:inherit;transition:.12s}
+.qa-btn:hover{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.qa-btn.disp-interested:hover{background:var(--green-bg);border-color:var(--green);color:var(--green)}
+.qa-btn.disp-not_now:hover{background:var(--yellow-bg);border-color:var(--yellow);color:var(--yellow)}
+.qa-btn.disp-not_interested:hover,.qa-btn.disp-wrong_person:hover{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.qa-note{flex:1;min-width:180px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:12.5px;padding:7px 10px;resize:none;outline:none}
+.qa-note:focus{border-color:var(--accent)}
+.qa-save{font-size:12px;padding:6px 12px;border-radius:7px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-family:inherit}
+.qa-save:hover{background:var(--accent-strong)}
+.section-sub{font-size:12.5px;color:var(--muted);font-weight:450;margin:-8px 0 13px}
+.empty-section{padding:22px;text-align:center;background:var(--surface);border:1px dashed var(--border2);border-radius:12px;color:var(--dim);font-size:13px;margin-bottom:9px}
+.queue-section{margin-top:30px}
+</style>
+
+<div class="page-header">
+  <h1>Action queue</h1>
+  <p>
+    {% if total == 0 %}All caught up — no actions needed today.
+    {% else %}{{ total }} lead{{ 's' if total != 1 else '' }} need{{ '' if total != 1 else 's' }} attention today.{% endif %}
+  </p>
+</div>
+
+<div class="cards" style="grid-template-columns:repeat(3,minmax(155px,1fr))">
+  <div class="card">
+    <div class="label" style="color:var(--red)">Needs response</div>
+    <div class="value {{ 'red' if unanswered }}">{{ unanswered|length }}</div>
+    <div class="sub">Prospects waiting for your reply</div>
+  </div>
+  <div class="card">
+    <div class="label" style="color:var(--yellow)">Wake date today</div>
+    <div class="value {{ 'orange' if wake }}">{{ wake|length }}</div>
+    <div class="sub">Not-now leads ready to re-engage</div>
+  </div>
+  <div class="card">
+    <div class="label" style="color:var(--orange)">Going cold</div>
+    <div class="value {{ 'orange' if cold }}">{{ cold|length }}</div>
+    <div class="sub">Warm leads, silent 7+ days, no reply</div>
+  </div>
+</div>
+
+{# ── Section 1: Unresponded replies ── #}
+<div class="queue-section">
+  <div class="section-title" style="display:flex;align-items:center;gap:10px">
+    Needs response
+    {% if unanswered %}<span class="badge red">{{ unanswered|length }}</span>{% endif %}
+  </div>
+  <p class="section-sub">They replied to you — respond while intent is fresh.</p>
+
+  {% if not unanswered %}<div class="empty-section">No unresponded replies — you're all caught up.</div>{% endif %}
+
+  {% for item in unanswered %}
+  {% set msg = item.msg %}{% set p = item.prospect %}{% set c = item.campaign %}
+  {% if p %}{% set parts = p.full_name.split() %}{% set av = (parts[0][0] + (parts[1][0] if parts|length > 1 else ''))|upper %}
+  {% elif msg.from_address %}{% set av = msg.from_address[:2]|upper %}{% else %}{% set av = '?' %}{% endif %}
+  <div class="qcard reply" id="rc-{{ msg.id }}">
+    <div class="qcard-main">
+      <div class="q-av reply">{{ av }}</div>
+      <div class="qcard-body">
+        <div class="qcard-name">
+          {{ p.full_name if p else (msg.from_address or 'Unknown') }}
+          {% if p and p.company_name %}<span class="qcard-co">· {{ p.company_name }}</span>{% endif %}
+        </div>
+        <div class="qcard-meta">
+          {{ c.name if c else 'Unknown campaign' }}{% if msg.step %} · Step {{ msg.step }}{% endif %}{% if p and p.job_title %} · {{ p.job_title }}{% endif %}
+        </div>
+        {% if msg.body_text %}
+        <div class="qcard-snippet">{{ msg.body_text[:200] }}{% if msg.body_text|length > 200 %}…{% endif %}</div>
+        {% endif %}
+      </div>
+      <div class="qcard-right">
+        <span class="qcard-time">{{ msg.timestamp_email | time_ago }}</span>
+        <a href="{{ url_for('inbox') }}?t={{ msg.thread_id }}" class="btn btn-primary btn-sm">Go to inbox</a>
+        {% if p %}<a href="{{ url_for('lead_detail', email=p.email) }}" class="btn btn-secondary btn-sm">Profile</a>{% endif %}
+        {% if p %}<button class="qa-toggle" onclick="toggleQA('rc-{{ msg.id }}')">Quick actions ▾</button>{% endif %}
+      </div>
+    </div>
+    {% if p %}
+    <div class="qa-panel" id="qa-rc-{{ msg.id }}">
+      <div class="qa-row">
+        <span class="qa-label">Mark as</span>
+        <button class="qa-btn disp-interested" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{disposition:'interested'})">Interested</button>
+        <button class="qa-btn disp-not_now" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{disposition:'not_now'})">Not now</button>
+        <button class="qa-btn disp-not_interested" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{disposition:'not_interested'})">Not interested</button>
+        <button class="qa-btn disp-wrong_person" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{disposition:'wrong_person'})">Wrong person</button>
+      </div>
+      <div class="qa-row">
+        <span class="qa-label">Park</span>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{wake_days:7})">+7 days</button>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{wake_days:14})">+14 days</button>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','rc-{{ msg.id }}',{wake_days:30})">+30 days</button>
+      </div>
+      <div class="qa-row" style="align-items:flex-start">
+        <span class="qa-label" style="padding-top:6px">Note</span>
+        <textarea class="qa-note" id="note-rc-{{ msg.id }}" rows="2" placeholder="Add a note…"></textarea>
+        <button class="qa-save" onclick="saveNote('{{ p.email }}','rc-{{ msg.id }}')">Save</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{# ── Section 2: Wake dates ── #}
+<div class="queue-section">
+  <div class="section-title" style="display:flex;align-items:center;gap:10px">
+    Wake date today
+    {% if wake %}<span class="badge yellow">{{ wake|length }}</span>{% endif %}
+  </div>
+  <p class="section-sub">You parked these as "not now." Their time is up — reach back out.</p>
+
+  {% if not wake %}<div class="empty-section">No wake-date leads due today.</div>{% endif %}
+
+  {% for item in wake %}
+  {% set p = item.prospect %}{% set c = item.campaign %}
+  {% set parts = p.full_name.split() %}{% set av = (parts[0][0] + (parts[1][0] if parts|length > 1 else ''))|upper %}
+  <div class="qcard wake" id="wc-{{ p.id }}">
+    <div class="qcard-main">
+      <div class="q-av wake">{{ av }}</div>
+      <div class="qcard-body">
+        <div class="qcard-name">{{ p.full_name }}{% if p.company_name %}<span class="qcard-co">· {{ p.company_name }}</span>{% endif %}</div>
+        <div class="qcard-meta">
+          {{ c.name if c else 'Unknown campaign' }}{% if p.job_title %} · {{ p.job_title }}{% endif %}
+          · Parked {{ p.wake_date.strftime('%b %d') }}
+          {% if item.days_overdue > 0 %}<span class="badge yellow" style="margin-left:5px">{{ item.days_overdue }}d overdue</span>{% endif %}
+        </div>
+        {% set note = p.reengagement_note or p.notes %}
+        {% if note %}<div class="qcard-snippet">{{ note[:200] }}{% if note|length > 200 %}…{% endif %}</div>{% endif %}
+      </div>
+      <div class="qcard-right">
+        <span class="badge {{ 'orange' if p.email_open_count >= 3 else 'gray' }}">{{ p.email_open_count }} opens</span>
+        <a href="{{ url_for('lead_detail', email=p.email) }}" class="btn btn-primary btn-sm">View lead</a>
+        <button class="qa-toggle" onclick="toggleQA('wc-{{ p.id }}')">Quick actions ▾</button>
+      </div>
+    </div>
+    <div class="qa-panel" id="qa-wc-{{ p.id }}">
+      <div class="qa-row">
+        <span class="qa-label">Mark as</span>
+        <button class="qa-btn disp-interested" onclick="qAction('{{ p.email }}','wc-{{ p.id }}',{disposition:'interested'})">Interested</button>
+        <button class="qa-btn disp-not_interested" onclick="qAction('{{ p.email }}','wc-{{ p.id }}',{disposition:'not_interested'})">Not interested</button>
+      </div>
+      <div class="qa-row">
+        <span class="qa-label">Snooze</span>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','wc-{{ p.id }}',{wake_days:7})">+7 days</button>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','wc-{{ p.id }}',{wake_days:30})">+30 days</button>
+      </div>
+      <div class="qa-row" style="align-items:flex-start">
+        <span class="qa-label" style="padding-top:6px">Note</span>
+        <textarea class="qa-note" id="note-wc-{{ p.id }}" rows="2" placeholder="Add a note…"></textarea>
+        <button class="qa-save" onclick="saveNote('{{ p.email }}','wc-{{ p.id }}')">Save</button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── Section 3: Going cold ── #}
+<div class="queue-section">
+  <div class="section-title" style="display:flex;align-items:center;gap:10px">
+    Going cold
+    {% if cold %}<span class="badge orange">{{ cold|length }}</span>{% endif %}
+  </div>
+  <p class="section-sub">High-intent leads who've gone quiet. A timely nudge often converts them.</p>
+
+  {% if not cold %}<div class="empty-section">No warm leads going cold right now.</div>{% endif %}
+
+  {% for item in cold %}
+  {% set p = item.prospect %}{% set c = item.campaign %}
+  {% set parts = p.full_name.split() %}{% set av = (parts[0][0] + (parts[1][0] if parts|length > 1 else ''))|upper %}
+  <div class="qcard cold" id="cc-{{ p.id }}">
+    <div class="qcard-main">
+      <div class="q-av cold">{{ av }}</div>
+      <div class="qcard-body">
+        <div class="qcard-name">{{ p.full_name }}{% if p.company_name %}<span class="qcard-co">· {{ p.company_name }}</span>{% endif %}</div>
+        <div class="qcard-meta">{{ c.name if c else 'Unknown campaign' }}{% if p.job_title %} · {{ p.job_title }}{% endif %}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <span class="badge orange">{{ p.email_open_count }} opens</span>
+          <span style="font-size:12px;color:var(--dim)">Last open {{ item.days_silent }}d ago · score {{ p.warm_score | int }}</span>
+          {% if p.stage and p.stage != 'New' %}<span class="badge gray">{{ p.stage }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="qcard-right">
+        <span class="qcard-time" style="color:var(--orange)">{{ item.days_silent }}d silent</span>
+        <a href="{{ url_for('lead_detail', email=p.email) }}" class="btn btn-primary btn-sm">View lead</a>
+        <button class="qa-toggle" onclick="toggleQA('cc-{{ p.id }}')">Quick actions ▾</button>
+      </div>
+    </div>
+    <div class="qa-panel" id="qa-cc-{{ p.id }}">
+      <div class="qa-row">
+        <span class="qa-label">Park</span>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','cc-{{ p.id }}',{wake_days:7})">+7 days</button>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','cc-{{ p.id }}',{wake_days:14})">+14 days</button>
+        <button class="qa-btn" onclick="qAction('{{ p.email }}','cc-{{ p.id }}',{wake_days:30})">+30 days</button>
+      </div>
+      <div class="qa-row">
+        <span class="qa-label">Mark as</span>
+        <button class="qa-btn disp-not_interested" onclick="qAction('{{ p.email }}','cc-{{ p.id }}',{disposition:'not_interested'})">Not interested</button>
+        <button class="qa-btn disp-wrong_person" onclick="qAction('{{ p.email }}','cc-{{ p.id }}',{disposition:'wrong_person'})">Wrong person</button>
+      </div>
+      <div class="qa-row" style="align-items:flex-start">
+        <span class="qa-label" style="padding-top:6px">Note</span>
+        <textarea class="qa-note" id="note-cc-{{ p.id }}" rows="2" placeholder="Add a note…"></textarea>
+        <button class="qa-save" onclick="saveNote('{{ p.email }}','cc-{{ p.id }}')">Save</button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleQA(cardId) {
+  var panel = document.getElementById('qa-' + cardId);
+  if (!panel) return;
+  var open = panel.style.display === 'block';
+  panel.style.display = open ? 'none' : 'block';
+  var toggle = document.querySelector('#' + cardId + ' .qa-toggle');
+  if (toggle) toggle.textContent = open ? 'Quick actions ▾' : 'Quick actions ▴';
+}
+
+function fadeRemove(cardId) {
+  var card = document.getElementById(cardId);
+  if (!card) return;
+  card.style.opacity = '0';
+  setTimeout(function() { card.remove(); }, 320);
+}
+
+function qAction(email, cardId, data) {
+  data.email = email;
+  fetch('{{ url_for("crm_queue_action") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) fadeRemove(cardId);
+    else alert('Error: ' + d.msg);
+  });
+}
+
+function saveNote(email, cardId) {
+  var ta = document.getElementById('note-' + cardId);
+  if (!ta || !ta.value.trim()) return;
+  fetch('{{ url_for("crm_queue_action") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: email, note: ta.value.trim()})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      ta.value = '';
+      ta.placeholder = 'Note saved ✓';
+      setTimeout(function() { ta.placeholder = 'Add a note…'; }, 2000);
+    }
+  });
+}
+</script>
+{% endblock %}

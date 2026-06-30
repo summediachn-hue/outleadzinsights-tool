@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block title %}Admin · Outleadz{% endblock %}
+{% block topbar %}Super Admin{% endblock %}
+{% block content %}
+<style>
+.admin-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:28px}
+.admin-tab{padding:10px 20px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.13s;user-select:none}
+.admin-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.admin-panel{display:none}.admin-panel.active{display:block}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(17,24,39,.45);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 30px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(17,24,39,.15)}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:20px;letter-spacing:-.3px}
+.form-row{margin-bottom:14px}
+.form-row label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.form-row input,.form-row select{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:9px;font-size:13.5px;font-family:inherit;outline:none;transition:border .13s}
+.form-row input:focus,.form-row select:focus{border-color:var(--accent)}
+.form-actions{display:flex;gap:8px;margin-top:22px;justify-content:flex-end}
+
+.user-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.role-badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:600}
+.role-badge.superadmin{background:var(--purple-bg, #f2e9fd);color:var(--purple, #7c3aed)}
+.role-badge.user{background:var(--accent-bg);color:var(--accent)}
+.acct-key{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11.5px;color:var(--muted);background:var(--surface2);padding:2px 8px;border-radius:5px}
+
+.inline-reset{display:flex;gap:6px;align-items:center}
+.inline-reset input{flex:1;font-size:12.5px;padding:6px 10px}
+.inline-reset button{white-space:nowrap;font-size:12px;padding:6px 12px}
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+  <div>
+    <h1>Admin</h1>
+    <p>Manage users and Instantly workspace accounts.</p>
+  </div>
+</div>
+
+<div class="admin-tabs">
+  <div class="admin-tab active" data-tab="users">Users <span class="badge blue" style="margin-left:6px">{{ users|length }}</span></div>
+  <div class="admin-tab" data-tab="accounts">Instantly Accounts <span class="badge blue" style="margin-left:6px">{{ accounts|length }}</span></div>
+  <div class="admin-tab" data-tab="tokens">Client Links <span class="badge blue" style="margin-left:6px">{{ tokens|selectattr('is_active')|list|length }}</span></div>
+</div>
+
+<!-- ── Users panel ── -->
+<div class="admin-panel active" id="tab-users">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="btn btn-primary btn-sm" onclick="openModal('addUser')">+ Add User</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr>
+        <th style="width:36px"></th>
+        <th>Name</th><th>Email</th><th>Role</th><th>Account</th><th>Last Login</th><th>Status</th><th>Actions</th>
+      </tr>
+      {% for u in users %}
+      {% set initials = (u.name.split()[0][0] + (u.name.split()[-1][0] if u.name.split()|length > 1 else '')) | upper %}
+      <tr>
+        <td><div class="user-avatar">{{ initials }}</div></td>
+        <td><strong style="font-size:13px">{{ u.name }}</strong></td>
+        <td style="font-size:12.5px;color:var(--muted)">{{ u.email }}</td>
+        <td><span class="role-badge {{ u.role }}">{{ u.role }}</span></td>
+        <td style="font-size:12.5px">
+          {% if u.role == 'superadmin' %}
+            <span class="muted">All accounts</span>
+          {% elif u.account_id %}
+            {% for a in accounts %}{% if a.id == u.account_id %}{{ a.name }}{% endif %}{% endfor %}
+          {% else %}
+            <span class="muted">None</span>
+          {% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--dim)">
+          {{ u.last_login_at.strftime('%b %d, %Y') if u.last_login_at else 'Never' }}
+        </td>
+        <td>
+          <span class="badge {{ 'green' if u.is_active else 'gray' }}">{{ 'Active' if u.is_active else 'Inactive' }}</span>
+        </td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            {% if u.id != current_user.id %}
+            <form method="POST" action="{{ url_for('admin_user_toggle', uid=u.id) }}" style="display:inline">
+              <button class="btn btn-secondary btn-sm" title="{{ 'Deactivate' if u.is_active else 'Activate' }}">
+                {{ 'Deactivate' if u.is_active else 'Activate' }}
+              </button>
+            </form>
+            {% endif %}
+            <button class="btn btn-secondary btn-sm" onclick="openReset({{ u.id }}, '{{ u.email }}')">Reset PW</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- ── Accounts panel ── -->
+<div class="admin-panel" id="tab-accounts">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="btn btn-primary btn-sm" onclick="openModal('addAccount')">+ Add Account</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Name</th><th>Workspace</th><th>API Key</th><th>Last Synced</th><th>Status</th><th>Actions</th></tr>
+      {% for a in accounts %}
+      <tr>
+        <td><strong style="font-size:13px">{{ a.name }}</strong></td>
+        <td style="font-size:12.5px;color:var(--muted)">{{ a.workspace_name or '—' }}</td>
+        <td><span class="acct-key">{{ a.api_key[:8] }}…{{ a.api_key[-4:] }}</span></td>
+        <td style="font-size:12px;color:var(--dim)">{{ a.last_synced_at.strftime('%b %d, %H:%M') if a.last_synced_at else 'Never' }}</td>
+        <td><span class="badge {{ 'green' if a.is_active else 'gray' }}">{{ 'Active' if a.is_active else 'Inactive' }}</span></td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <form method="POST" action="{{ url_for('admin_account_sync', aid=a.id) }}" style="display:inline">
+              <button class="btn btn-primary btn-sm">Sync Now</button>
+            </form>
+            <form method="POST" action="{{ url_for('admin_account_toggle', aid=a.id) }}" style="display:inline">
+              <button class="btn btn-secondary btn-sm">{{ 'Deactivate' if a.is_active else 'Activate' }}</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- ── Client Links panel ── -->
+<div class="admin-panel" id="tab-tokens">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="btn btn-primary btn-sm" onclick="openModal('addToken')">+ Generate Client Link</button>
+  </div>
+
+  {% if tokens %}
+  <div class="table-wrap">
+    <table>
+      <tr><th>Label</th><th>Account</th><th>Link</th><th>Expires</th><th>Status</th><th>Actions</th></tr>
+      {% for t in tokens %}
+      {% set acct_name = '' %}
+      {% for a in accounts %}{% if a.id == t.account_id %}{% set acct_name = a.name %}{% endif %}{% endfor %}
+      <tr>
+        <td><strong style="font-size:13px">{{ t.label or 'Unnamed' }}</strong></td>
+        <td style="font-size:12.5px;color:var(--muted)">{{ acct_name or t.account_id }}</td>
+        <td style="max-width:260px">
+          {% if t.is_active %}
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="acct-key" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px"
+                  id="tlink-{{ t.id }}">/client/{{ t.token[:12] }}…</span>
+            <button class="btn btn-secondary btn-sm"
+                    onclick="copyToken('{{ t.token }}', 'tcopy-{{ t.id }}')"
+                    id="tcopy-{{ t.id }}">Copy</button>
+          </div>
+          {% else %}
+          <span class="muted" style="font-size:12px">Revoked</span>
+          {% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--dim)">
+          {{ t.expires_at.strftime('%b %d, %Y') if t.expires_at else 'Never' }}
+        </td>
+        <td>
+          <span class="badge {{ 'green' if t.is_active and t.is_valid else 'gray' }}">
+            {{ 'Active' if t.is_active and t.is_valid else ('Expired' if not t.is_valid else 'Revoked') }}
+          </span>
+        </td>
+        <td>
+          {% if t.is_active %}
+          <form method="POST" action="{{ url_for('admin_token_revoke', tid=t.id) }}" style="display:inline"
+                onsubmit="return confirm('Revoke this client link? The client will lose access immediately.')">
+            <button class="btn btn-secondary btn-sm" style="color:var(--red)">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <div class="table-wrap"><div class="empty-state">No client links yet. Generate one to share a read-only dashboard with your client.</div></div>
+  {% endif %}
+
+  <div style="margin-top:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:11px">
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.6">
+      <strong style="color:var(--text)">How it works:</strong>
+      Each link gives a client read-only access to their account's performance — metrics, funnel, campaigns, and leads.
+      Recommendations, deliverability, and internal settings are never shown. Revoke any link instantly from this panel.
+    </p>
+  </div>
+
+  {# ── Client activity feed ── #}
+  {% if client_activity %}
+  <h2 style="font-size:15px;font-weight:700;margin:28px 0 12px">Recent Client Actions</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>When</th><th>Account</th><th>Lead</th><th>Action</th><th>Note</th></tr>
+      {% for act in client_activity %}
+      {% set acct_name = '' %}
+      {% for a in accounts %}{% if a.id == act.account_id %}{% set acct_name = a.name %}{% endif %}{% endfor %}
+      {% set token_label = '' %}
+      {% for t in tokens %}{% if t.id == act.token_id %}{% set token_label = t.label %}{% endif %}{% endfor %}
+      <tr>
+        <td style="font-size:12px;color:var(--dim);white-space:nowrap">
+          {{ act.created_at.strftime('%b %d, %H:%M') if act.created_at else '—' }}
+        </td>
+        <td style="font-size:12.5px;color:var(--muted)">
+          {{ acct_name or act.account_id }}
+          {% if token_label %}<div style="font-size:11px;color:var(--dim)">{{ token_label }}</div>{% endif %}
+        </td>
+        <td style="font-size:12.5px">
+          {{ act.prospect_email or '—' }}
+        </td>
+        <td>
+          {% if act.action == 'outcome_won' %}
+            <span class="badge green">Won</span>
+          {% elif act.action == 'outcome_lost' %}
+            <span class="badge" style="background:var(--red-bg);color:var(--red)">Lost</span>
+          {% elif act.action == 'outcome_reschedule' %}
+            <span class="badge" style="background:var(--yellow-bg);color:var(--yellow)">Reschedule</span>
+          {% elif act.action == 'note_added' %}
+            <span class="badge gray">Note added</span>
+          {% else %}
+            <span class="badge gray">{{ act.action }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size:12.5px;color:var(--muted);max-width:260px">
+          {{ act.note[:80] + '…' if act.note and act.note|length > 80 else (act.note or '—') }}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Add User modal ── -->
+<div class="modal-overlay" id="addUser">
+  <div class="modal">
+    <h3>Add User</h3>
+    <form method="POST" action="{{ url_for('admin_user_add') }}">
+      <div class="form-row"><label>Full Name</label><input type="text" name="name" placeholder="Jane Smith" required></div>
+      <div class="form-row"><label>Email</label><input type="email" name="email" placeholder="jane@company.com" required></div>
+      <div class="form-row"><label>Password</label><input type="password" name="password" placeholder="Min. 6 characters" required></div>
+      <div class="form-row">
+        <label>Role</label>
+        <select name="role" id="roleSelect" onchange="toggleAccountField()">
+          <option value="user">User</option>
+          <option value="superadmin">Super Admin</option>
+        </select>
+      </div>
+      <div class="form-row" id="accountField">
+        <label>Assign to Accounts <span style="font-weight:400;text-transform:none;letter-spacing:0">(hold ⌘/Ctrl to pick multiple)</span></label>
+        <select name="account_ids" multiple style="height:auto;min-height:80px">
+          {% for a in accounts %}{% if a.is_active %}
+          <option value="{{ a.id }}">{{ a.name }}{% if a.workspace_name %} — {{ a.workspace_name }}{% endif %}</option>
+          {% endif %}{% endfor %}
+        </select>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:5px">User can switch between assigned accounts from the topbar.</div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addUser')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add Account modal ── -->
+<div class="modal-overlay" id="addAccount">
+  <div class="modal">
+    <h3>Add Instantly Account</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Each account uses its own Instantly API key. After adding, click "Sync Now" to pull campaigns and leads.</p>
+    <form method="POST" action="{{ url_for('admin_account_add') }}">
+      <div class="form-row"><label>Account Name</label><input type="text" name="name" placeholder="e.g. Client A — Sales Outreach" required></div>
+      <div class="form-row"><label>Instantly API Key</label><input type="text" name="api_key" placeholder="Paste the V2 API key…" required autocomplete="off"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addAccount')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Generate client link modal ── -->
+<div class="modal-overlay" id="addToken">
+  <div class="modal">
+    <h3>Generate Client Link</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Creates a read-only shareable URL for your client. No login required — anyone with the link can view the dashboard.</p>
+    <form method="POST" id="addTokenForm">
+      <div class="form-row">
+        <label>Account</label>
+        <select name="account_id" id="tokenAccountSelect" onchange="updateTokenAction()" required>
+          {% for a in accounts %}{% if a.is_active %}
+          <option value="{{ a.id }}" data-url="{{ url_for('admin_token_generate', aid=a.id) }}">
+            {{ a.name }}{% if a.workspace_name %} — {{ a.workspace_name }}{% endif %}
+          </option>
+          {% endif %}{% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Label <span style="font-weight:400;text-transform:none;letter-spacing:0">(shown to client)</span></label>
+        <input type="text" name="label" placeholder="e.g. USMICRO Outreach Report">
+      </div>
+      <div class="form-row">
+        <label>Expires in <span style="font-weight:400;text-transform:none;letter-spacing:0">(days, leave blank = never)</span></label>
+        <input type="number" name="expires_days" placeholder="e.g. 90" min="1" max="3650">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addToken')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Generate Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Reset PW modal ── -->
+<div class="modal-overlay" id="resetPw">
+  <div class="modal">
+    <h3>Reset Password</h3>
+    <p id="resetFor" style="font-size:13px;color:var(--muted);margin-bottom:20px"></p>
+    <form method="POST" id="resetForm">
+      <div class="form-row"><label>New Password</label><input type="password" name="password" placeholder="Min. 6 characters" required></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('resetPw')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Reset Password</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Tabs
+document.querySelectorAll('.admin-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Modals
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if(e.target === o) o.classList.remove('open'); });
+});
+
+// Role → account field
+function toggleAccountField(){
+  const r = document.getElementById('roleSelect').value;
+  document.getElementById('accountField').style.display = r === 'superadmin' ? 'none' : '';
+}
+
+// Reset PW modal
+function openReset(uid, email){
+  document.getElementById('resetFor').textContent = 'Resetting password for: ' + email;
+  document.getElementById('resetForm').action = '/admin/users/' + uid + '/reset';
+  openModal('resetPw');
+}
+
+// Auto-open tab from query param
+{% if request.args.get('tab') == 'accounts' or active_tab == 'accounts' %}
+document.querySelector('[data-tab="accounts"]').click();
+{% elif request.args.get('tab') == 'tokens' or active_tab == 'tokens' %}
+document.querySelector('[data-tab="tokens"]').click();
+{% endif %}
+
+// Set generate-token form action from account dropdown
+function updateTokenAction(){
+  var sel = document.getElementById('tokenAccountSelect');
+  var opt = sel.options[sel.selectedIndex];
+  document.getElementById('addTokenForm').action = opt.dataset.url;
+}
+// Init on page load
+(function(){ updateTokenAction(); })();
+
+// Copy client link to clipboard
+function copyToken(token, btnId){
+  var url = location.origin + '/client/' + token;
+  navigator.clipboard.writeText(url).then(function(){
+    var btn = document.getElementById(btnId);
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(function(){ btn.textContent = orig; btn.style.color = ''; }, 2000);
+  });
+}
+</script>
+{% endblock %}

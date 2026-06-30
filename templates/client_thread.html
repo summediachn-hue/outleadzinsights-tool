@@ -1,0 +1,78 @@
+{% extends "client_base.html" %}
+{% block title %}Thread · {{ acct.workspace_name or acct.name }} · Outleadz{% endblock %}
+{% block content %}
+
+<div style="margin-bottom:18px">
+  <a href="{{ url_for('client_leads', token_str=ct.token) }}"
+     style="font-size:13px;color:var(--muted);font-weight:500">← Back to Leads</a>
+</div>
+
+{% if prospect %}
+<div class="table-wrap" style="padding:18px 20px;margin-bottom:18px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:18px;font-weight:700">{{ prospect.full_name }}</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:3px">{{ prospect.email }}</div>
+      {% if prospect.company_name %}
+      <div style="font-size:13px;color:var(--muted)">
+        {{ prospect.company_name }}{% if prospect.job_title %} · {{ prospect.job_title }}{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if prospect.stage == 'Meeting' %}
+        <span class="badge green"><span class="dot"></span> Meeting Booked</span>
+      {% elif prospect.lt_interest_status == 1 %}
+        <span class="badge accent">Interested</span>
+      {% elif prospect.email_reply_count > 0 %}
+        <span class="badge gray">Replied</span>
+      {% endif %}
+      {% if prospect.email_open_count > 0 %}
+        <span class="badge gray">{{ prospect.email_open_count }} opens</span>
+      {% endif %}
+      {% if campaign %}
+        <span class="badge gray" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">
+          {{ campaign.name }}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="sec-head">
+  <h2>Conversation</h2>
+  <span class="muted">{{ messages|length }} message{{ 's' if messages|length != 1 else '' }}</span>
+</div>
+
+{% for m in messages %}
+<div class="thread-bubble {{ 'inbound' if m.is_inbound else '' }}">
+  <div class="thread-meta">
+    <div>
+      <span class="thread-from">{{ m.from_address or m.eaccount or 'Unknown' }}</span>
+      {% if m.subject %}
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;font-weight:500">
+        {{ m.subject }}
+      </div>
+      {% endif %}
+    </div>
+    <span class="thread-date">
+      {{ m.timestamp_email.strftime('%-d %b %Y, %-I:%M %p') if m.timestamp_email else '' }}
+    </span>
+  </div>
+  <div class="thread-body">
+    {%- set body = m.body_text or '' -%}
+    {%- set lines = [] -%}
+    {%- for line in body.splitlines() -%}
+      {%- if line.strip() -%}
+        {%- set _ = lines.append(line.strip()) -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ lines[:60]|join('\n') }}
+  </div>
+</div>
+{% else %}
+<div class="empty-state">No messages in this thread.</div>
+{% endfor %}
+
+{% endblock %}

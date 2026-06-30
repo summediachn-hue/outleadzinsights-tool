@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.full_name }} · Lead{% endblock %}
+{% block content %}
+<style>
+.tl-wrap{padding:20px 22px}
+.tl-item{display:flex;gap:0;margin-bottom:0}
+.tl-spine{display:flex;flex-direction:column;align-items:center;width:28px;flex-shrink:0}
+.tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px;z-index:1}
+.tl-line{width:2px;flex:1;min-height:20px;background:var(--border);margin:2px 0}
+.tl-body{flex:1;min-width:0;padding-bottom:18px;padding-left:4px}
+.tl-type{font-size:13px;font-weight:600;color:var(--text)}
+.tl-detail{font-size:12px;color:var(--muted);margin-top:2px}
+.tl-date{font-size:11px;color:var(--dim);margin-top:2px}
+</style>
+
+<div style="margin-bottom:14px"><a href="{{ url_for('leads') }}" style="color:var(--muted);font-size:13px;text-decoration:none">← Leads</a></div>
+
+<div style="display:grid;grid-template-columns:1fr 320px;gap:20px">
+  <div>
+    <div class="table-wrap">
+      <div class="table-header"><h2>{{ lead.full_name }}</h2>
+        <div style="display:flex;gap:8px">
+          {% if lead.linkedin_url %}<a href="{{ lead.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm">LinkedIn ↗</a>{% endif %}
+          <a href="mailto:{{ lead.email }}" class="btn btn-secondary btn-sm">Email ↗</a>
+        </div>
+      </div>
+      <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:13px">
+        <div><div class="label muted" style="font-size:10.5px;text-transform:uppercase">Email</div><div style="margin-top:3px">{{ lead.email }}</div></div>
+        <div><div class="label muted" style="font-size:10.5px;text-transform:uppercase">Company</div><div style="margin-top:3px">{{ lead.company_name or lead.company_domain or 'Not set' }}</div></div>
+        {% if lead.phone %}<div><div class="label muted" style="font-size:10.5px;text-transform:uppercase">Phone</div><div style="margin-top:3px">{{ lead.phone }}</div></div>{% endif %}
+        {% if campaign %}<div><div class="label muted" style="font-size:10.5px;text-transform:uppercase">Campaign</div><div style="margin-top:3px"><a href="{{ url_for('campaign_detail', cid=campaign.id) }}">{{ campaign.name }}</a></div></div>{% endif %}
+        {% if lead.interest_label %}<div><div class="label muted" style="font-size:10.5px;text-transform:uppercase">Instantly Interest</div><div style="margin-top:3px"><span class="badge green">{{ lead.interest_label }}</span></div></div>{% endif %}
+      </div>
+    </div>
+
+    <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+      <div class="card"><div class="label">Opens</div><div class="value {{ 'orange' if lead.email_open_count>=3 else '' }}" style="font-size:24px">{{ lead.email_open_count }}</div></div>
+      <div class="card"><div class="label">Clicks</div><div class="value" style="font-size:24px">{{ lead.email_click_count }}</div></div>
+      <div class="card"><div class="label">Replies</div><div class="value {{ 'green' if lead.email_reply_count>0 else '' }}" style="font-size:24px">{{ lead.email_reply_count }}</div></div>
+      <div class="card"><div class="label">Warm Score</div><div class="value purple" style="font-size:24px">{{ lead.warm_score }}</div></div>
+    </div>
+
+    {% if lead.email_open_count>=3 and lead.email_reply_count==0 %}
+    <div class="callout warning">
+      <h3>Hidden Intent: {{ lead.email_open_count }} opens, no reply</h3>
+      <ul><li>Strong interest signal with no response yet: a direct, personal follow-up converts best here.</li>
+        <li>Move to "Replied" or "Meeting" once they engage.</li></ul>
+    </div>
+    {% endif %}
+
+    <div class="table-wrap">
+      <div class="table-header"><h2>Activity Timeline</h2></div>
+      {% if events %}
+      <div class="tl-wrap">
+        {% for e in events %}
+        {% if 'replied' in e.type or 'interest' in e.type %}{% set dot_color = 'var(--green)' %}
+        {% elif 'open' in e.type %}{% set dot_color = 'var(--orange)' %}
+        {% elif 'click' in e.type %}{% set dot_color = 'var(--teal)' %}
+        {% elif 'sent' in e.type or 'contact' in e.type %}{% set dot_color = 'var(--accent)' %}
+        {% elif 'bounce' in e.type or 'unsub' in e.type %}{% set dot_color = 'var(--red)' %}
+        {% else %}{% set dot_color = 'var(--dim)' %}
+        {% endif %}
+
+        {% if 'replied' in e.type %}{% set label = 'Replied' %}
+        {% elif 'opened' in e.type or 'open' in e.type %}{% set label = 'Opened email' %}
+        {% elif 'clicked' in e.type or 'click' in e.type %}{% set label = 'Clicked link' %}
+        {% elif 'sent' in e.type %}{% set label = 'Email sent' %}
+        {% elif 'contacted' in e.type %}{% set label = 'Contacted' %}
+        {% elif 'bounced' in e.type %}{% set label = 'Bounced' %}
+        {% elif 'unsubscribed' in e.type %}{% set label = 'Unsubscribed' %}
+        {% elif 'interested' in e.type %}{% set label = 'Marked interested' %}
+        {% elif 'meeting' in e.type %}{% set label = 'Meeting booked' %}
+        {% elif 'stage' in e.type %}{% set label = 'Stage changed' %}
+        {% elif 'note' in e.type %}{% set label = 'Note added' %}
+        {% else %}{% set label = e.type.replace('_',' ').title() %}
+        {% endif %}
+
+        <div class="tl-item">
+          <div class="tl-spine">
+            <div class="tl-dot" style="background:{{ dot_color }}"></div>
+            {% if not loop.last %}<div class="tl-line"></div>{% endif %}
+          </div>
+          <div class="tl-body">
+            <div class="tl-type">{{ label }}</div>
+            {% if e.meta and e.meta != '{}' and e.meta != '' %}
+            <div class="tl-detail">{{ e.meta | truncate(80) }}</div>
+            {% endif %}
+            <div class="tl-date">{{ e.occurred_at.strftime('%b %d, %Y · %H:%M') if e.occurred_at else '' }}
+              <span style="color:var(--dim)">· {{ e.channel }}</span>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="padding:22px" class="muted"><div style="font-size:13px">No events recorded yet.</div></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="table-wrap">
+      <div class="table-header"><h2>CRM</h2></div>
+      <div style="padding:18px">
+        <div class="label muted" style="font-size:10.5px;text-transform:uppercase;margin-bottom:10px">Pipeline Stage</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          {% for s in stages %}
+          <button class="stage-btn" data-stage="{{ s }}"
+            style="padding:8px 14px;border-radius:7px;border:1px solid var(--border);font-size:13px;cursor:pointer;text-align:left;background:{{ 'var(--accent)' if lead.stage==s else 'var(--surface2)' }};color:{{ '#fff' if lead.stage==s else 'var(--text)' }}">{{ s }}</button>
+          {% endfor %}
+        </div>
+
+        <div class="label muted" style="font-size:10.5px;text-transform:uppercase;margin:16px 0 6px">Disposition</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          {% for d in dispositions %}
+          <button class="disp-btn-ld {{ d }}{{ ' active-disp' if lead.disposition == d }}" data-disp="{{ d }}"
+            style="padding:7px 12px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;cursor:pointer;text-align:left;font-family:inherit;background:{{ 'var(--green-bg)' if lead.disposition==d and d=='interested' else ('var(--yellow-bg)' if lead.disposition==d and d=='not_now' else ('var(--red-bg)' if lead.disposition==d and d in ('not_interested','wrong_person','unsubscribed') else 'var(--surface2)')) }};color:{{ 'var(--green)' if lead.disposition==d and d=='interested' else ('var(--yellow)' if lead.disposition==d and d=='not_now' else ('var(--red)' if lead.disposition==d and d in ('not_interested','wrong_person','unsubscribed') else 'var(--text)')) }}">
+            {{ d.replace('_', ' ').title() }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <div class="label muted" style="font-size:10.5px;text-transform:uppercase;margin:16px 0 6px">Wake Date</div>
+        <input type="date" id="wakeDate" value="{{ lead.wake_date.isoformat() if lead.wake_date else '' }}"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;font-family:inherit">
+        <button id="saveWake" class="btn btn-secondary" style="margin-top:6px;width:100%;font-size:12.5px">Set Wake Date</button>
+        <div id="wakeSaved" style="font-size:12px;color:var(--green);text-align:center;margin-top:5px;display:none">Wake date saved</div>
+
+        <div class="label muted" style="font-size:10.5px;text-transform:uppercase;margin:16px 0 6px">Notes</div>
+        <textarea id="notes" rows="5" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px;resize:vertical;font-family:inherit">{{ lead.notes or '' }}</textarea>
+        <button id="saveNotes" class="btn btn-primary" style="margin-top:8px;width:100%">Save Notes</button>
+        <div id="saved" style="font-size:12px;color:var(--green);text-align:center;margin-top:6px;display:none">Saved</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const email={{ lead.email|tojson }};
+async function upd(body){return fetch(`/lead/${encodeURIComponent(email)}/update`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+
+document.querySelectorAll('.stage-btn').forEach(b=>b.addEventListener('click',async()=>{
+  const r=await upd({stage:b.dataset.stage});
+  if(r.ok) document.querySelectorAll('.stage-btn').forEach(x=>{
+    const a=x.dataset.stage===b.dataset.stage;
+    x.style.background=a?'var(--accent)':'var(--surface2)';
+    x.style.color=a?'#fff':'var(--text)';
+  });
+}));
+
+document.querySelectorAll('.disp-btn-ld').forEach(b=>b.addEventListener('click',async()=>{
+  const r=await upd({disposition:b.dataset.disp});
+  if(r.ok) document.querySelectorAll('.disp-btn-ld').forEach(x=>{
+    const d=x.dataset.disp, active=d===b.dataset.disp;
+    x.style.background=active?(d==='interested'?'var(--green-bg)':(d==='not_now'?'var(--yellow-bg)':(['not_interested','wrong_person','unsubscribed'].includes(d)?'var(--red-bg)':'var(--surface2)'))):'var(--surface2)';
+    x.style.color=active?(d==='interested'?'var(--green)':(d==='not_now'?'var(--yellow)':(['not_interested','wrong_person','unsubscribed'].includes(d)?'var(--red)':'var(--text)'))):'var(--text)';
+  });
+}));
+
+document.getElementById('saveNotes').addEventListener('click',async()=>{
+  const r=await upd({notes:document.getElementById('notes').value});
+  if(r.ok){const s=document.getElementById('saved');s.style.display='block';setTimeout(()=>s.style.display='none',2000);}
+});
+
+document.getElementById('saveWake').addEventListener('click',async()=>{
+  const v=document.getElementById('wakeDate').value;
+  const r=await upd({wake_date:v});
+  if(r.ok){const s=document.getElementById('wakeSaved');s.style.display='block';setTimeout(()=>s.style.display='none',2000);}
+});
+</script>
+{% endblock %}

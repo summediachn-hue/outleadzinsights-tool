@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Scripts & A/B · Outleadz{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Scripts &amp; A/B Analysis</h1>
+  <p>Which subject lines and sequence steps actually convert: ranked by reply rate.</p>
+</div>
+
+<div class="filter-bar">
+  <a href="{{ url_for('scripts') }}" class="filter-chip {{ 'active' if not cid }}">All Campaigns</a>
+  {% for camp in campaigns %}{% if camp.emails_sent_count > 0 %}
+  <a href="{{ url_for('scripts') }}?cid={{ camp.id }}" class="filter-chip {{ 'active' if cid==camp.id }}">{{ camp.name }}</a>
+  {% endif %}{% endfor %}
+</div>
+
+<div class="callout neutral">
+  <h3>How to read this</h3>
+  <ul>
+    <li><strong>High open, low reply</strong>: subject works, body doesn't. Rewrite the CTA / value prop.</li>
+    <li><strong>Low open</strong>: subject or deliverability problem. Fix before judging the copy.</li>
+    <li><strong>High reply</strong>: your winning script. Replicate its tone elsewhere.</li>
+  </ul>
+</div>
+
+{% if rows %}
+<div class="table-wrap">
+  <div class="table-header"><h2>{{ rows|length }} steps ranked by reply rate</h2></div>
+  <table>
+    <tr><th>#</th><th>Campaign</th><th>Step</th><th>Subject Line</th><th>Sent</th><th>Open %</th><th>Reply %</th><th>Assessment</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td style="font-size:12px"><a href="{{ url_for('campaign_detail', cid=r.campaign_id) }}">{{ r.campaign_name }}</a></td>
+      <td><span class="badge blue">{{ r.step }}{% if r.variant and r.variant != '0' %}·{{ r.variant }}{% endif %}</span></td>
+      <td><strong style="font-size:13px">{{ r.subject }}</strong></td>
+      <td class="muted">{{ r.sent }}</td>
+      <td class="{{ 'rate-good' if r.open_rate>=30 else 'rate-warn' if r.open_rate>=15 else 'rate-bad' }}">{{ r.open_rate }}%</td>
+      <td class="{{ 'rate-good' if r.reply_rate>=4 else 'rate-warn' if r.reply_rate>=2 else 'rate-bad' }}">{{ r.reply_rate }}%</td>
+      <td>
+        {% if r.health=='good' %}<span class="status"><span class="dot green"></span>Top performer</span>
+        {% elif r.open_rate>=25 and r.reply_rate<3 %}<span class="status"><span class="dot yellow"></span>Copy needs work</span>
+        {% elif r.open_rate<15 %}<span class="status"><span class="dot red"></span>Fix subject first</span>
+        {% else %}<span class="status"><span class="dot gray"></span>Average</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% set top = rows|first %}{% set worst = rows|last %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div class="callout good">
+    <h3>Best converting</h3>
+    <ul><li>"{{ top.subject }}"</li><li>{{ top.reply_rate }}% reply · {{ top.open_rate }}% open: use as template.</li></ul>
+  </div>
+  {% if worst.reply_rate < 2 %}
+  <div class="callout critical">
+    <h3>Weakest</h3>
+    <ul><li>"{{ worst.subject }}"</li><li>{{ worst.reply_rate }}% reply: retire or rewrite.</li></ul>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="empty-state">No step data yet: click <strong>Sync Instantly</strong>.</div>
+{% endif %}
+
+{% if ab %}
+<div class="section-title">A/B Variant Tests</div>
+{% for test in ab %}
+<div class="table-wrap">
+  <div class="table-header"><h2>{{ test.campaign_name }}: Step {{ test.step }}</h2><span class="status"><span class="dot green"></span>Winner: variant {{ test.winner }}</span></div>
+  <table>
+    <tr><th>Variant</th><th>Subject</th><th>Sent</th><th>Open %</th><th>Reply %</th></tr>
+    {% for v in test.variants %}
+    <tr>
+      <td><span class="badge {{ 'green' if v.variant==test.winner else 'gray' }}">{{ v.variant }}</span></td>
+      <td>{{ v.subject }}</td><td class="muted">{{ v.sent }}</td>
+      <td>{{ v.open_rate }}%</td><td>{{ v.reply_rate }}%</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

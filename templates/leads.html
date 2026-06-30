@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Leads · Outleadz{% endblock %}
+{% block content %}
+<style>
+.bulk-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:#fff;
+  border-radius:14px;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(17,24,39,.22);
+  z-index:400;transition:transform .22s cubic-bezier(.34,1.56,.64,1);font-size:13px;font-weight:500;white-space:nowrap}
+.bulk-bar.show{transform:translateX(-50%) translateY(0)}
+.bulk-bar select{background:#2d3240;color:#fff;border:1px solid #444;border-radius:8px;padding:5px 10px;font-size:12.5px;font-family:inherit;cursor:pointer}
+.bulk-bar .btn-white{background:#fff;color:var(--text);padding:6px 13px;font-size:12.5px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-family:inherit}
+.bulk-bar .btn-white:hover{background:#f0f0f0}
+.bulk-bar .btn-ghost{background:transparent;color:#aaa;padding:6px 10px;font-size:12.5px;border-radius:8px;border:1px solid #444;cursor:pointer;font-family:inherit}
+.bulk-bar .bulk-count{font-size:13px;color:#ccc;margin-right:4px}
+.bulk-sep{width:1px;height:24px;background:#3a3f52;flex-shrink:0}
+input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+th input[type=checkbox]{margin:0}
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+  <div>
+    <h1>Leads</h1>
+    <p>All prospects, ranked by warm score. Filter by intent signal.</p>
+  </div>
+  <a id="exportAllBtn" href="{{ url_for('leads_export') }}?f={{ ftype }}{% if cid %}&cid={{ cid }}{% endif %}" class="btn btn-secondary btn-sm" style="margin-top:6px">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Export CSV
+  </a>
+</div>
+
+<div class="filter-bar">
+  <a href="{{ url_for('leads') }}{% if cid %}?cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='all' }}">All</a>
+  <a href="{{ url_for('leads') }}?f=hidden{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='hidden' }}">Hidden Intent</a>
+  <a href="{{ url_for('leads') }}?f=warm{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='warm' }}">Warm ({{ warm_threshold }}+ opens)</a>
+  <a href="{{ url_for('leads') }}?f=replied{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='replied' }}">Replied</a>
+  <a href="{{ url_for('leads') }}?f=interested{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='interested' }}">Interested</a>
+  {% if campaigns %}
+  <form method="get" action="{{ url_for('leads') }}" style="margin-left:auto">
+    <input type="hidden" name="f" value="{{ ftype }}">
+    <select name="cid" onchange="this.form.submit()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:20px;font-size:12px;cursor:pointer">
+      <option value="">All campaigns</option>
+      {% for camp in campaigns %}<option value="{{ camp.id }}" {{ 'selected' if cid==camp.id }}>{{ camp.name }}</option>{% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+
+{% if leads %}
+<div class="table-wrap">
+  <div class="table-header"><h2 id="leadCount">{{ leads|length }} lead{{ 's' if leads|length!=1 }}</h2></div>
+  <table id="leadsTable">
+    <tr>
+      <th style="width:36px"><input type="checkbox" id="selectAll" title="Select all"></th>
+      <th>Name</th><th>Company</th><th>Opens</th><th>Replies</th><th>Score</th><th>Interest</th><th>Stage</th><th>LinkedIn</th><th></th>
+    </tr>
+    {% for l in leads %}
+    <tr data-email="{{ l.email }}">
+      <td><input type="checkbox" class="row-cb" value="{{ l.email }}"></td>
+      <td><span class="status">{% if l.is_warm %}<span class="dot orange" title="Warm"></span>{% endif %}<strong>{{ l.full_name }}</strong></span>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ l.email }}</div></td>
+      <td class="muted">{{ l.company_name or l.company_domain }}</td>
+      <td>{% if l.email_open_count>=3 %}<span class="intent-chip">{{ l.email_open_count }}</span>{% elif l.email_open_count>0 %}<span class="badge yellow">{{ l.email_open_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td>{% if l.email_reply_count>0 %}<span class="badge green">{{ l.email_reply_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td class="muted">{{ l.warm_score }}</td>
+      <td>{% if l.interest_label %}<span class="badge {{ 'green' if l.lt_interest_status==1 else 'orange' if l.lt_interest_status in [2,3] else 'red' if l.lt_interest_status and l.lt_interest_status<0 else 'gray' }}">{{ l.interest_label }}</span>{% endif %}</td>
+      <td><span class="badge {{ 'green' if l.stage in ['Won'] else 'orange' if l.stage in ['Meeting','Replied'] else 'blue' if l.stage=='Engaged' else 'gray' }}">{{ l.stage }}</span></td>
+      <td>{% if l.linkedin_url %}<a href="{{ l.linkedin_url }}" target="_blank">LinkedIn ↗</a>{% endif %}</td>
+      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No leads for this filter.{% if ftype!='all' %} <a href="{{ url_for('leads') }}" style="color:var(--accent)">Clear</a>{% endif %}</div>
+{% endif %}
+
+<!-- Bulk action bar -->
+<div class="bulk-bar" id="bulkBar">
+  <span class="bulk-count"><span id="bulkN">0</span> selected</span>
+  <div class="bulk-sep"></div>
+  <select id="bulkStage">
+    <option value="">Move to stage…</option>
+    {% for s in stages %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+  </select>
+  <select id="bulkDisp">
+    <option value="">Set disposition…</option>
+    {% for d in dispositions %}<option value="{{ d }}">{{ d.replace('_',' ').title() }}</option>{% endfor %}
+  </select>
+  <div class="bulk-sep"></div>
+  <button class="btn-white" id="bulkExport">Export selected</button>
+  <button class="btn-ghost" id="bulkApply">Apply</button>
+  <button class="btn-ghost" id="bulkClear">✕</button>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const selectAll = document.getElementById('selectAll');
+const bulkBar = document.getElementById('bulkBar');
+const bulkN = document.getElementById('bulkN');
+
+function getChecked(){ return [...document.querySelectorAll('.row-cb:checked')].map(c=>c.value); }
+
+function updateBar(){
+  const n = getChecked().length;
+  bulkN.textContent = n;
+  bulkBar.classList.toggle('show', n > 0);
+}
+
+selectAll?.addEventListener('change', function(){
+  document.querySelectorAll('.row-cb').forEach(c=>c.checked=this.checked);
+  updateBar();
+});
+
+document.querySelectorAll('.row-cb').forEach(c=>c.addEventListener('change', function(){
+  const all = document.querySelectorAll('.row-cb');
+  const checked = document.querySelectorAll('.row-cb:checked');
+  if(selectAll) selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+  if(selectAll) selectAll.checked = checked.length === all.length;
+  updateBar();
+}));
+
+document.getElementById('bulkClear')?.addEventListener('click', function(){
+  document.querySelectorAll('.row-cb, #selectAll').forEach(c=>{ c.checked=false; c.indeterminate=false; });
+  updateBar();
+});
+
+document.getElementById('bulkApply')?.addEventListener('click', async function(){
+  const emails = getChecked();
+  if(!emails.length) return;
+  const stage = document.getElementById('bulkStage').value;
+  const disposition = document.getElementById('bulkDisp').value;
+  if(!stage && !disposition){ alert('Pick a stage or disposition first.'); return; }
+  const body = {emails};
+  if(stage) body.stage = stage;
+  if(disposition) body.disposition = disposition;
+  const r = await fetch('/leads/bulk-update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  if(r.ok){ location.reload(); } else { alert('Update failed.'); }
+});
+
+document.getElementById('bulkExport')?.addEventListener('click', function(){
+  const emails = getChecked();
+  if(!emails.length) return;
+  const params = emails.map(e=>'emails='+encodeURIComponent(e)).join('&');
+  window.location = '/leads/export.csv?' + params;
+});
+</script>
+{% endblock %}

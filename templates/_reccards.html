@@ -1,0 +1,33 @@
+{# Reusable recommendation cards. Usage:
+   {% from "_reccards.html" import rec_list %}  then  {{ rec_list(recs, 3) }} #}
+
+{% macro sev_icon(color) -%}
+{% if color == 'red' %}<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+{%- elif color == 'orange' %}<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+{%- elif color == 'green' %}<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+{%- else %}<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>{% endif %}
+{%- endmacro %}
+
+{% macro rec_card(rec) -%}
+<div class="rec">
+  <div class="rec-ic rec-ic-{{ rec.color }}">{{ sev_icon(rec.color) }}</div>
+  <div class="rec-body">
+    <div class="rec-top"><span class="rec-title">{{ rec.title }}</span><span class="rec-cat-pill">{{ rec.category }}</span></div>
+    <div class="rec-detail">{{ rec.detail }}</div>
+    <div class="rec-action"><b>Do this:</b> {{ rec.action }}</div>
+    <div class="rec-evidence">{{ rec.evidence }}</div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro rec_list(recs, limit=3, noun='recommendations') -%}
+<div class="reclist">
+  {% for rec in recs[:limit] %}{{ rec_card(rec) }}{% endfor %}
+  {% if recs|length > limit %}
+  <div class="rec-extra" hidden>
+    {% for rec in recs[limit:] %}{{ rec_card(rec) }}{% endfor %}
+  </div>
+  <button type="button" class="view-all-toggle" data-label="View all {{ recs|length }} {{ noun }}">View all {{ recs|length }} {{ noun }}</button>
+  {% endif %}
+</div>
+{%- endmacro %}

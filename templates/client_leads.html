@@ -1,0 +1,326 @@
+{% extends "client_base.html" %}
+{% block title %}{{ acct.workspace_name or acct.name }} · Leads · Outleadz{% endblock %}
+{% block content %}
+
+<style>
+/* Outcome modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(17,24,39,.45);z-index:400;display:none;
+               align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px 28px;
+       width:100%;max-width:420px;box-shadow:0 20px 60px rgba(17,24,39,.15)}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:6px}
+.modal .sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+
+.outcome-opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
+.outcome-opt{position:relative}
+.outcome-opt input{position:absolute;opacity:0;width:0;height:0}
+.outcome-opt label{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 8px;
+                   border:1.5px solid var(--border);border-radius:11px;cursor:pointer;
+                   font-size:12.5px;font-weight:600;color:var(--muted);text-align:center;transition:.12s}
+.outcome-opt label .icon{font-size:22px}
+.outcome-opt input:checked + label{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+.outcome-opt.won input:checked + label{border-color:var(--green);background:var(--green-bg);color:var(--green)}
+.outcome-opt.lost input:checked + label{border-color:var(--red);background:var(--red-bg);color:var(--red)}
+
+.modal textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;
+                color:var(--text);padding:9px 12px;font-size:13px;font-family:inherit;resize:vertical;
+                min-height:80px;outline:none;transition:border .13s}
+.modal textarea:focus{border-color:var(--accent)}
+.modal-label{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;
+             letter-spacing:.5px;margin-bottom:6px;display:block}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.btn{padding:8px 16px;border-radius:9px;font-size:13.5px;font-weight:600;font-family:inherit;
+     cursor:pointer;border:none;transition:.13s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-strong)}
+.btn-secondary{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.btn-secondary:hover{color:var(--text)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+       background:var(--text);color:#fff;padding:10px 20px;border-radius:10px;
+       font-size:13.5px;font-weight:500;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* Note form in thread panel */
+.note-form{border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
+.note-form textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+                    color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit;resize:none;
+                    height:72px;outline:none;transition:border .13s}
+.note-form textarea:focus{border-color:var(--accent)}
+</style>
+
+{# ── Filter tabs ── #}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+  <div class="filter-tabs" style="margin-bottom:0">
+    <a href="{{ url_for('client_leads', token_str=ct.token, f='replied', cid=cid) }}"
+       class="filter-tab {{ 'active' if filt == 'replied' else '' }}">All Replies</a>
+    <a href="{{ url_for('client_leads', token_str=ct.token, f='interested', cid=cid) }}"
+       class="filter-tab {{ 'active' if filt == 'interested' else '' }}">Interested</a>
+    <a href="{{ url_for('client_leads', token_str=ct.token, f='meeting', cid=cid) }}"
+       class="filter-tab {{ 'active' if filt == 'meeting' else '' }}">Meeting Booked</a>
+    <a href="{{ url_for('client_leads', token_str=ct.token, f='warm', cid=cid) }}"
+       class="filter-tab {{ 'active' if filt == 'warm' else '' }}">High Engagement</a>
+  </div>
+  {% if campaigns %}
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="font-size:12.5px;color:var(--muted)">Campaign:</span>
+    <form method="GET" style="display:inline">
+      <input type="hidden" name="f" value="{{ filt }}">
+      <select name="cid" onchange="this.form.submit()"
+              style="background:var(--surface);border:1px solid var(--border);border-radius:8px;
+                     color:var(--text);padding:6px 10px;font-size:13px;font-family:inherit">
+        <option value="">All campaigns</option>
+        {% for c in campaigns %}
+        <option value="{{ c.id }}" {{ 'selected' if cid == c.id else '' }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Lead table ── #}
+<div class="table-wrap">
+  {% if leads %}
+  <table>
+    <tr>
+      <th>Name</th><th>Company</th><th>Campaign</th><th>Stage</th>
+      <th>Opens</th><th>Last Activity</th><th></th>
+    </tr>
+    {% for p in leads %}
+    <tr>
+      <td>
+        <div style="font-weight:600;font-size:13.5px">{{ p.full_name }}</div>
+        <div style="font-size:12px;color:var(--dim)">{{ p.email }}</div>
+      </td>
+      <td style="font-size:13px">
+        {{ p.company_name or '—' }}
+        {% if p.job_title %}<div style="font-size:11.5px;color:var(--dim)">{{ p.job_title }}</div>{% endif %}
+      </td>
+      <td class="muted" style="font-size:12.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        {{ campaign_map.get(p.campaign_id, '—') }}
+      </td>
+      <td>
+        {% if p.stage == 'Meeting' %}
+          <span class="badge green"><span class="dot"></span> Meeting</span>
+        {% elif p.stage == 'Won' %}
+          <span class="badge green">Won</span>
+        {% elif p.stage == 'Lost' %}
+          <span class="badge gray">Lost</span>
+        {% elif p.lt_interest_status == 1 or p.disposition == 'interested' %}
+          <span class="badge accent">Interested</span>
+        {% elif p.email_reply_count > 0 %}
+          <span class="badge gray">Replied</span>
+        {% else %}
+          <span class="badge gray">Engaged</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if p.email_open_count > 0 %}
+          <span class="badge {{ 'accent' if p.email_open_count >= 5 else 'gray' }}">{{ p.email_open_count }}</span>
+        {% else %}<span class="dim">—</span>{% endif %}
+      </td>
+      <td style="font-size:12px;color:var(--dim)">
+        {% set ts = p.timestamp_last_reply or p.timestamp_last_open %}
+        {{ ts|time_ago if ts else '—' }}
+      </td>
+      <td>
+        <div style="display:flex;gap:8px;align-items:center;white-space:nowrap">
+          {# Thread link for leads with replies #}
+          {% if p.email_reply_count > 0 %}
+          <a href="?f={{ filt }}&open={{ p.email }}"
+             style="font-size:12.5px;color:var(--accent);font-weight:600">Thread →</a>
+          {% endif %}
+          {# Outcome button for any lead that isn't already closed #}
+          {% if p.stage not in ('Won', 'Lost') %}
+          <button onclick="openOutcome({{ p.id|tojson }}, {{ p.full_name|tojson }})"
+                  style="padding:4px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+                         background:var(--green-bg);color:var(--green);border:1.5px solid #bfe6d3">
+            Mark Outcome
+          </button>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty-state">No leads in this filter yet. Try a different category.</div>
+  {% endif %}
+</div>
+
+{% if leads|length >= 300 %}
+<p style="font-size:12px;color:var(--dim);margin-top:10px;text-align:center">
+  Showing top 300 leads. Use the campaign filter to narrow results.
+</p>
+{% endif %}
+
+{# ── Outcome modal ── #}
+<div class="modal-overlay" id="outcomeModal">
+  <div class="modal">
+    <h3>Mark meeting outcome</h3>
+    <p class="sub" id="outcomeSubtitle"></p>
+    <form method="POST" id="outcomeForm">
+      <div class="outcome-opts">
+        <div class="outcome-opt won">
+          <input type="radio" name="outcome" id="o-won" value="won" required>
+          <label for="o-won"><span class="icon">🏆</span>Won</label>
+        </div>
+        <div class="outcome-opt lost">
+          <input type="radio" name="outcome" id="o-lost" value="lost">
+          <label for="o-lost"><span class="icon">✗</span>Lost</label>
+        </div>
+        <div class="outcome-opt">
+          <input type="radio" name="outcome" id="o-reschedule" value="reschedule">
+          <label for="o-reschedule"><span class="icon">🔄</span>Reschedule</label>
+        </div>
+      </div>
+      <label class="modal-label">Note <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <textarea name="note" placeholder="e.g. They want to sign next month / Budget approved / Not the right fit…"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeOutcome()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save outcome</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Thread panel ── #}
+{% if open_lead %}
+<div id="thread-panel" style="position:fixed;top:0;right:0;width:500px;height:100vh;
+     background:var(--surface);border-left:1px solid var(--border);z-index:200;
+     overflow-y:auto;box-shadow:-8px 0 32px rgba(17,24,39,.1)">
+
+  {# Header #}
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);
+              display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;
+              background:var(--surface);z-index:10">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:14px;font-weight:700">Conversation</div>
+      {% if open_lead.stage == 'Meeting' %}
+      <button onclick="openOutcome({{ open_lead.id|tojson }}, {{ open_lead.full_name|tojson }})"
+              style="padding:4px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+                     background:var(--green-bg);color:var(--green);border:1.5px solid #bfe6d3">
+        Mark Outcome
+      </button>
+      {% endif %}
+    </div>
+    <a href="?f={{ filt }}&cid={{ cid or '' }}"
+       style="font-size:24px;color:var(--dim);line-height:1;text-decoration:none">×</a>
+  </div>
+
+  {# Lead info #}
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+    <div style="font-weight:700;font-size:15px">{{ open_lead.full_name }}</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:2px">{{ open_lead.email }}</div>
+    {% if open_lead.company_name %}
+    <div style="font-size:12.5px;color:var(--muted)">
+      {{ open_lead.company_name }}{% if open_lead.job_title %} · {{ open_lead.job_title }}{% endif %}
+    </div>
+    {% endif %}
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      {% if open_lead.stage == 'Meeting' %}
+        <span class="badge green"><span class="dot"></span> Meeting</span>
+      {% elif open_lead.stage == 'Won' %}<span class="badge green">Won</span>
+      {% elif open_lead.stage == 'Lost' %}<span class="badge gray">Lost</span>
+      {% elif open_lead.lt_interest_status == 1 %}<span class="badge accent">Interested</span>
+      {% elif open_lead.email_reply_count > 0 %}<span class="badge gray">Replied</span>
+      {% endif %}
+      {% if open_lead.email_open_count > 0 %}
+        <span class="badge gray">{{ open_lead.email_open_count }} opens</span>
+      {% endif %}
+    </div>
+    {# Show existing notes tagged [Client] #}
+    {% if open_lead.notes %}
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.5;
+                background:var(--surface2);border-radius:7px;padding:8px 10px;white-space:pre-wrap">
+      {{ open_lead.notes[:400] }}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Messages #}
+  <div id="thread-msgs" style="padding:14px 18px;font-size:13px;color:var(--dim)">Loading…</div>
+
+  {# Add note form #}
+  <div style="padding:0 18px 24px">
+    <div class="note-form">
+      <form method="POST"
+            action="{{ url_for('client_lead_note', token_str=ct.token, prospect_id=open_lead.id) }}">
+        <label class="modal-label" style="margin-bottom:6px;display:block">Add a note</label>
+        <textarea name="note" placeholder="e.g. Followed up on pricing, meeting went well…"></textarea>
+        <div style="margin-top:8px;display:flex;justify-content:flex-end">
+          <button type="submit" class="btn btn-primary" style="font-size:13px;padding:7px 16px">
+            Save note
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Toast ── #}
+<div class="toast" id="toast"></div>
+
+{# ── Scripts ── #}
+<script>
+// Outcome modal
+var _outcomeProspectId = null;
+function openOutcome(pid, name){
+  _outcomeProspectId = pid;
+  document.getElementById('outcomeSubtitle').textContent = name;
+  document.getElementById('outcomeForm').action =
+    '/client/{{ ct.token }}/lead/' + pid + '/outcome';
+  // Reset radio
+  document.querySelectorAll('#outcomeModal input[name=outcome]').forEach(r => r.checked = false);
+  document.getElementById('outcomeModal').classList.add('open');
+}
+function closeOutcome(){
+  document.getElementById('outcomeModal').classList.remove('open');
+}
+document.getElementById('outcomeModal').addEventListener('click', function(e){
+  if(e.target === this) closeOutcome();
+});
+
+// Thread messages
+{% if open_lead %}
+(function(){
+  var email = {{ open_lead.email|tojson }};
+  fetch('/client/{{ ct.token }}/thread-by-email?email=' + encodeURIComponent(email))
+    .then(r => r.json())
+    .then(function(data){
+      var el = document.getElementById('thread-msgs');
+      if(!data.messages || !data.messages.length){
+        el.innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--dim)">No email thread yet.</div>';
+        return;
+      }
+      el.innerHTML = data.messages.map(function(m){
+        var cls = m.inbound ? 'inbound' : '';
+        var body = (m.body||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<div class="thread-bubble '+cls+'" style="margin-bottom:12px">' +
+          '<div class="thread-meta">' +
+            '<span class="thread-from">' + (m.from_address||'').replace(/</g,'&lt;') + '</span>' +
+            '<span class="thread-date">' + (m.date||'') + '</span>' +
+          '</div>' +
+          '<div class="thread-body">' + body + '</div>' +
+        '</div>';
+      }).join('');
+    })
+    .catch(function(){ document.getElementById('thread-msgs').textContent = 'Could not load thread.'; });
+})();
+{% endif %}
+
+// Toast on outcome saved
+{% if request.args.get('_anchor') == 'outcome-saved' or request.args.get('saved') %}
+(function(){
+  var t = document.getElementById('toast');
+  t.textContent = 'Outcome saved — your account team has been notified.';
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 3500);
+})();
+{% endif %}
+</script>
+
+{% endblock %}

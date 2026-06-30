@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Deliverability · Outleadz{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Deliverability</h1>
+  <p>Sender mailbox health — the root cause behind open rates.</p>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Mailboxes <span class="info" data-tip="Sending email accounts connected to your outreach.">i</span></div><div class="value">{{ summary.total }}</div></div>
+  <div class="card"><div class="label">No Issues <span class="info" data-tip="Mailboxes that are connected and not landing in spam. (A mailbox with warmup off but no error is fine — it's still sending.)">i</span></div><div class="value {{ 'green' if summary.healthy==summary.total else '' }}">{{ summary.healthy }}<span style="font-size:15px;color:var(--dim);font-weight:600"> / {{ summary.total }}</span></div></div>
+  <div class="card"><div class="label">Need Attention <span class="info" data-tip="Mailboxes with a real problem: a connection/account error, or warmup emails landing in spam. A 0 warmup score alone is NOT counted here.">i</span></div><div class="value {{ 'red' if summary.issues>0 else 'green' }}">{{ summary.issues }}</div><div class="sub">errors or spam placement</div></div>
+  <div class="card"><div class="label">Inbox Rate <span class="info" data-tip="Of the mailboxes that have warmup placement data, the share of warmup emails landing in the inbox vs spam.">i</span></div>{% if summary.warming %}<div class="value {{ 'green' if summary.inbox_rate>=90 else '' }}">{{ summary.inbox_rate }}%</div><div class="sub">{{ summary.total_inbox }} inbox / {{ summary.total_spam }} spam</div>{% else %}<div class="value muted" style="font-size:20px">No warmup data</div>{% endif %}</div>
+</div>
+
+{% if summary.issues > 0 %}
+<div class="callout critical">
+  <h3>{{ summary.issues }} mailbox(es) need attention</h3>
+  <ul><li>A connection error or spam placement on a sending mailbox drags down deliverability on every campaign it touches.</li>
+    <li>Reconnect erroring mailboxes, and pause any landing in spam until warmup recovers.</li></ul>
+</div>
+{% else %}
+<div class="callout good">
+  <h3>No deliverability issues</h3>
+  <ul><li>Every mailbox is connected with no errors and none are landing in spam. Low opens are more likely subject lines than deliverability.</li></ul>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <div class="table-header"><h2>Mailboxes</h2><span class="muted" style="font-size:12px">issues first</span></div>
+  {% if summary.accounts %}
+  <table>
+    <tr><th>Mailbox</th><th>State <span class="info" data-tip="Disconnected = account error in Instantly. Spam risk = warmup emails landing in spam. Healthy = good warmup score or strong inbox placement. Active = connected and sending, warmup just isn't running.">i</span></th><th>Warmup Score</th><th>Inbox</th><th>Spam</th><th>Inbox Rate</th></tr>
+    {% for a in summary.accounts %}
+    <tr>
+      <td class="muted">{{ a.email }}</td>
+      <td><span class="status"><span class="dot {{ a.state_color }}"></span>{{ a.state_label }}</span>{% if a.health_state == 'error' and a.error_message %}<div style="font-size:11px;color:var(--red);margin-top:2px">{{ a.error_message[:80] }}</div>{% endif %}</td>
+      <td class="{{ 'rate-good' if a.warmup_score>=75 else 'muted' }}">{{ a.warmup_score }}%</td>
+      <td>{% if a.has_placement_data %}{{ a.wa_landed_inbox }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="{{ 'rate-bad' if a.wa_landed_spam>0 else 'muted' }}">{% if a.has_placement_data %}{{ a.wa_landed_spam }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="{{ 'rate-good' if a.inbox_rate>=90 else 'rate-warn' }}">{% if a.has_placement_data %}{{ a.inbox_rate }}%{% else %}<span class="muted">no warmup data</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="padding:11px 16px;border-top:1px solid var(--border)">
+    <p class="tip"><b>Note</b>“Active” means the mailbox is connected and sending — a 0 warmup score just means warmup isn't running, which is not an error.</p>
+  </div>
+  {% else %}<div class="empty-state">No mailbox data: click <strong>Sync Now</strong>.</div>{% endif %}
+</div>
+
+<div class="table-wrap">
+  <div class="table-header"><h2>Open Rate by Campaign</h2><span class="muted" style="font-size:12px">where opens are weakest</span></div>
+  <table>
+    <tr><th>Campaign</th><th>Sent</th><th>Open Rate</th><th>Bounce Rate</th><th>Likely cause</th></tr>
+    {% for c in campaigns %}
+    <tr>
+      <td><a href="{{ url_for('campaign_detail', cid=c.id) }}">{{ c.name }}</a></td>
+      <td class="muted">{{ c.emails_sent_count }}</td>
+      <td class="{{ 'rate-good' if c.open_rate>=30 else 'rate-warn' if c.open_rate>=15 else 'rate-bad' }}">{{ c.open_rate }}%</td>
+      <td class="{{ 'rate-bad' if c.bounce_rate>5 else 'muted' }}">{{ c.bounce_rate }}%</td>
+      <td>{% if c.bounce_rate > 5 %}<span class="status"><span class="dot red"></span>List quality (bounce)</span>
+        {% elif c.open_rate < 15 and summary.issues > 0 %}<span class="status"><span class="dot red"></span>Check mailbox issues</span>
+        {% elif c.open_rate < 30 %}<span class="status"><span class="dot yellow"></span>Subject lines</span>
+        {% else %}<span class="status"><span class="dot green"></span>Healthy</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

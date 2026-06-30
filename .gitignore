@@ -1,0 +1,25 @@
+# Environment & secrets
+.env
+*.env
+
+# Database (stays on server, never in repo)
+instance/
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+env/
+
+# Claude Code session config
+.claude/
+
+# Misc
+.DS_Store
+*.log
+*.tmp

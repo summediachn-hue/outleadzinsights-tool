@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Revenue · Outleadz{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Revenue &amp; Conversion</h1>
+  <p>Pipeline value and outcomes: what the outreach actually produced.</p>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="label">Pipeline Value <span class="info" data-tip="Estimated dollar value of all opportunities created from this outreach.">i</span></div><div class="value green">${{ '{:,}'.format(rev.pipeline_value) }}</div></div>
+  <div class="card"><div class="label">Opportunities <span class="info" data-tip="Replies that became real sales opportunities: interested, meeting, or deal.">i</span></div><div class="value accent">{{ rev.opportunities }}</div></div>
+  <div class="card"><div class="label">Interested <span class="info" data-tip="People who replied positively or asked to talk.">i</span></div><div class="value">{{ rev.interested }}</div></div>
+  <div class="card"><div class="label">Meetings <span class="info" data-tip="Meetings booked from this outreach.">i</span></div><div class="value orange">{{ rev.meetings }}</div></div>
+  <div class="card"><div class="label">Closed Won <span class="info" data-tip="Deals marked as closed-won in Instantly.">i</span></div><div class="value green">{{ rev.closed }}</div></div>
+  <div class="card"><div class="label">Avg Deal Value <span class="info" data-tip="Pipeline value divided by the number of opportunities.">i</span></div><div class="value">${{ '{:,}'.format(rev.value_per_opp) }}</div></div>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header"><h2>Revenue Funnel</h2></div>
+  <div style="padding:18px">
+    {% set maxv = funnel[0].value if funnel and funnel[0].value else 1 %}
+    {% for f in funnel %}
+    <div class="funnel-row">
+      <div class="funnel-label">{{ f.label }}</div>
+      <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:{{ (f.value/maxv*100) if maxv else 0 }}%;background:{{ f.color }}">{{ '{:,}'.format(f.value) }}</div></div>
+      <div class="funnel-pct">{{ f.pct_of_contacted }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <div class="table-wrap">
+    <div class="table-header"><h2>Pipeline by Campaign</h2></div>
+    {% if rev.campaigns %}
+    <table>
+      <tr><th>Campaign</th><th>Opps</th><th>Value</th></tr>
+      {% for c in rev.campaigns %}
+      <tr>
+        <td><a href="{{ url_for('campaign_detail', cid=c.id) }}">{{ c.name }}</a></td>
+        <td class="muted">{{ c.total_opportunities }}</td>
+        <td class="rate-good">${{ '{:,}'.format(c.total_opportunity_value|int) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<div class="empty-state">No revenue data yet.</div>{% endif %}
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-header"><h2>Reply Sentiment</h2><span class="muted" style="font-size:12px">Instantly AI classification</span></div>
+    {% if sentiment %}
+    <div style="padding:18px">
+      {% set maxc = (sentiment|map(attribute='count')|max) or 1 %}
+      {% for s in sentiment %}
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>{{ s.label }}</span><span class="muted">{{ s.count }}</span></div>
+        <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden"><div style="width:{{ s.count/maxc*100 }}%;height:100%;background:{{ s.color }}"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state">No sentiment data yet.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

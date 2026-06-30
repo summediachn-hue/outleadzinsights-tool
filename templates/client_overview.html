@@ -1,0 +1,170 @@
+{% extends "client_base.html" %}
+{% block title %}{{ acct.workspace_name or acct.name }} · Overview · Outleadz{% endblock %}
+{% block content %}
+
+{# ── Date range selector ── #}
+<div style="display:flex;justify-content:flex-end;margin-bottom:22px;gap:8px;flex-wrap:wrap">
+  {% for val, label in timeframes %}
+  <a href="?days={{ val }}"
+     style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;
+            border:1px solid var(--border);transition:.12s;
+            {{ 'background:var(--accent);color:#fff;border-color:var(--accent)' if active_tf==val else 'background:var(--surface);color:var(--muted)' }}">
+    {{ label }}
+  </a>
+  {% endfor %}
+</div>
+
+{# ── KPI cards ── #}
+<div class="cards">
+  <div class="card">
+    <div class="label">Emails Sent</div>
+    <div class="value">{{ life.sent|default(0)|int }}</div>
+    <div class="sub">all time</div>
+  </div>
+  <div class="card">
+    <div class="label">Open Rate</div>
+    <div class="value {{ 'accent' if life.open_rate >= 25 else '' }}">{{ life.open_rate|default(0) }}%</div>
+    <div class="sub">{{ life.opens|default(0)|int }} unique opens</div>
+  </div>
+  <div class="card">
+    <div class="label">Reply Rate</div>
+    <div class="value {{ 'green' if life.reply_rate >= 3 else '' }}">{{ life.reply_rate|default(0) }}%</div>
+    <div class="sub">{{ life.replies|default(0)|int }} unique replies</div>
+  </div>
+  <div class="card">
+    <div class="label">Interested</div>
+    <div class="value">{{ life.interested|default(0)|int }}</div>
+    <div class="sub">positive responses</div>
+  </div>
+  <div class="card">
+    <div class="label">Meetings</div>
+    <div class="value green">{{ life.meetings|default(0)|int }}</div>
+    <div class="sub">booked</div>
+  </div>
+</div>
+
+{# ── Funnel — funnel is a list of {label, value, color, pct_of_contacted} ── #}
+{% if funnel %}
+<div class="sec-head"><h2>Conversion Funnel</h2><span class="muted">{{ active_tf if active_tf != 'all' else 'All time' }}</span></div>
+<div class="table-wrap" style="padding:18px 20px 14px">
+  {% set max_val = funnel[0].value if funnel else 1 %}
+  {% for stage in funnel %}
+  {% set pct = [(stage.value / max_val * 100)|round(0)|int, 1]|max if max_val else 1 %}
+  <div class="funnel-row">
+    <div class="funnel-label">{{ stage.label }}</div>
+    <div class="funnel-bar-track">
+      <div class="funnel-bar-fill" style="width:{{ pct }}%;background:{{ stage.color }}">
+        {{ stage.value }}
+      </div>
+    </div>
+    <div class="funnel-count">{{ stage.value }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Campaigns ── #}
+{% if campaigns %}
+<div class="sec-head">
+  <h2>Campaigns</h2>
+  <span class="muted">{{ campaigns|length }} active</span>
+</div>
+<div class="table-wrap">
+  <table>
+    <tr>
+      <th>Campaign</th>
+      <th>Sent</th>
+      <th>Open Rate</th>
+      <th>Reply Rate</th>
+      <th>Interested</th>
+      <th>Status</th>
+    </tr>
+    {% for c in campaigns %}
+    <tr>
+      <td style="font-weight:600;font-size:13.5px">{{ c.name }}</td>
+      <td class="muted">{{ c.emails_sent_count|default(0) }}</td>
+      <td class="{{ 'rate-good' if c.open_rate >= 25 else 'rate-warn' if c.open_rate >= 12 else 'rate-bad' }}">
+        {{ c.open_rate }}%
+      </td>
+      <td class="{{ 'rate-good' if c.reply_rate >= 3 else '' }}">{{ c.reply_rate }}%</td>
+      <td>{{ c.total_interested|default(0) }}</td>
+      <td>
+        {% if c.status_code == 1 %}
+          <span class="badge green"><span class="dot"></span> Active</span>
+        {% elif c.status_code == 2 %}
+          <span class="badge gray">Paused</span>
+        {% else %}
+          <span class="badge gray">{{ c.status_label or 'Inactive' }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{# ── Two-column: engaged + interested ── #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+
+  {# Engaged leads #}
+  <div>
+    <div class="sec-head"><h2>Engaged Leads</h2><span class="muted">Opened 3+ times</span></div>
+    <div class="table-wrap">
+      {% if warm %}
+      <table>
+        <tr><th>Name</th><th>Company</th><th>Opens</th></tr>
+        {% for p in warm %}
+        <tr>
+          <td style="font-weight:500">{{ p.full_name }}</td>
+          <td class="muted" style="font-size:12.5px">{{ p.company_name or '—' }}</td>
+          <td><span class="badge accent">{{ p.email_open_count }}</span></td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="empty-state">No highly engaged leads yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Interested / replied #}
+  <div>
+    <div class="sec-head"><h2>Interested Leads</h2><span class="muted">Positive replies</span></div>
+    <div class="table-wrap">
+      {% if interested %}
+      <table>
+        <tr><th>Name</th><th>Company</th><th>Stage</th></tr>
+        {% for p in interested %}
+        <tr>
+          <td style="font-weight:500">{{ p.full_name }}</td>
+          <td class="muted" style="font-size:12.5px">{{ p.company_name or '—' }}</td>
+          <td>
+            {% if p.stage == 'Meeting' %}
+              <span class="badge green">Meeting</span>
+            {% elif p.stage == 'Won' %}
+              <span class="badge green">Closed</span>
+            {% else %}
+              <span class="badge accent">Interested</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <div class="empty-state">No interested leads yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:28px;padding-top:18px;border-top:1px solid var(--border);
+            display:flex;justify-content:space-between;align-items:center">
+  <span style="font-size:12px;color:var(--dim)">Outleadz · outreach intelligence</span>
+  <a href="{{ url_for('client_leads', token_str=ct.token) }}"
+     style="font-size:13px;color:var(--accent);font-weight:600">
+    View all leads & conversations →
+  </a>
+</div>
+
+{% endblock %}

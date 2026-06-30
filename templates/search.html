@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Search{% if q %}: {{ q }}{% endif %} · Outleadz{% endblock %}
+{% block topbar %}Search results{% if q %} for "{{ q }}"{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Search{% if q %}: <span style="color:var(--accent)">{{ q }}</span>{% endif %}</h1>
+  {% if q and (prospects or campaigns) %}
+  <p>{{ prospects|length }} lead{{ 's' if prospects|length!=1 }}{% if campaigns %}, {{ campaigns|length }} campaign{{ 's' if campaigns|length!=1 }}{% endif %} matched</p>
+  {% elif q %}
+  <p style="color:var(--muted)">No results found for "{{ q }}"</p>
+  {% endif %}
+</div>
+
+{% if not q %}
+<div class="empty-state" style="padding:60px">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="1.4"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <div style="margin-top:12px;font-size:14px;color:var(--dim)">Type a name, email, or company in the search bar above</div>
+</div>
+{% else %}
+
+{% if campaigns %}
+<div class="table-wrap" style="margin-bottom:22px">
+  <div class="table-header"><h2>Campaigns</h2><span class="badge blue">{{ campaigns|length }}</span></div>
+  <table>
+    <tr><th>Name</th><th>Status</th><th>Leads</th><th></th></tr>
+    {% for c in campaigns %}
+    <tr>
+      <td><strong>{{ c.name }}</strong></td>
+      <td><span class="badge {{ 'green' if c.status=='active' else 'gray' }}">{{ c.status or 'unknown' }}</span></td>
+      <td class="muted">{{ c.leads_count or '—' }}</td>
+      <td><a href="{{ url_for('campaign_detail', cid=c.id) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if prospects %}
+<div class="table-wrap">
+  <div class="table-header">
+    <h2>Leads <span style="color:var(--muted);font-weight:450;font-size:13px;margin-left:6px">{{ prospects|length }}{% if prospects|length==200 %}+{% endif %}</span></h2>
+    <a href="{{ url_for('leads_export') }}?emails={{ prospects|map(attribute='email')|join('&emails=') }}" class="btn btn-secondary btn-sm">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </a>
+  </div>
+  <table>
+    <tr><th>Name</th><th>Company</th><th>Job Title</th><th>Stage</th><th>Opens</th><th>Replies</th><th>Score</th><th></th></tr>
+    {% for l in prospects %}
+    <tr>
+      <td>
+        <span class="status">{% if l.is_warm %}<span class="dot orange" title="Warm"></span>{% endif %}<strong>{{ l.full_name }}</strong></span>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ l.email }}</div>
+      </td>
+      <td class="muted">{{ l.company_name or l.company_domain or '—' }}</td>
+      <td style="font-size:12.5px;color:var(--muted)">{{ l.job_title or '—' }}</td>
+      <td><span class="badge {{ 'green' if l.stage=='Won' else 'orange' if l.stage in ['Meeting','Replied'] else 'blue' if l.stage=='Engaged' else 'gray' }}">{{ l.stage }}</span></td>
+      <td>{% if l.email_open_count>=3 %}<span class="intent-chip">{{ l.email_open_count }}</span>{% elif l.email_open_count>0 %}<span class="badge yellow">{{ l.email_open_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td>{% if l.email_reply_count>0 %}<span class="badge green">{{ l.email_reply_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td class="muted">{{ l.warm_score }}</td>
+      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if q and not prospects and not campaigns %}
+<div class="empty-state">
+  <div style="font-size:14px">No results for <strong>"{{ q }}"</strong></div>
+  <div style="font-size:12.5px;color:var(--dim);margin-top:6px">Try a different name, email, or company</div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

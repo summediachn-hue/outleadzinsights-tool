@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Settings · Outleadz{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Settings</h1><p>API connection and sync.</p></div>
+
+<div style="max-width:560px">
+  <div class="table-wrap">
+    <div class="table-header"><h2>Instantly API Key</h2></div>
+    <div style="padding:20px">
+      {% if has_key %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span class="status"><span class="dot green"></span>Configured</span>
+        <span class="muted" style="font-size:13px;font-family:monospace">{{ preview }}</span>
+      </div>
+      <button id="testBtn" class="btn btn-primary">Test Connection</button>
+      <span id="testResult" style="font-size:13px;margin-left:10px"></span>
+      {% else %}
+      <div class="status" style="margin-bottom:14px"><span class="dot red"></span>Not configured</div>
+      <p style="font-size:13px;color:var(--muted)">Set <code>INSTANTLY_API_KEY</code> in <code>.env</code> and restart.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-header"><h2>Data Sync</h2></div>
+    <div style="padding:20px">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Pulls campaigns, analytics, steps, leads, and mailbox health into the local database.</p>
+      {% if last_sync %}<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Last synced: {{ last_sync.strftime('%b %d, %Y %H:%M') }} UTC</p>{% endif %}
+      <form method="POST" action="{{ url_for('sync') }}"><button type="submit" class="btn btn-primary">Sync Now</button></form>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-header"><h2>Modules</h2></div>
+    <div style="padding:8px 20px 16px">
+      {% set mods = [
+        ('Dashboard','engagement, funnel, hidden-intent leads'),
+        ('Campaigns','health diagnosis per campaign'),
+        ('Trends','time-series, day &amp; time engagement'),
+        ('Scripts &amp; A/B','subject / step ranking'),
+        ('Deliverability','mailbox health'),
+        ('Revenue','pipeline + sentiment'),
+        ('Pipeline','CRM lead stages')] %}
+      {% for name, desc in mods %}
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span class="dot accent"></span><strong>{{ name|safe }}</strong>
+        <span class="muted">{{ desc|safe }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('testBtn')?.addEventListener('click',async()=>{
+  const b=document.getElementById('testBtn'),r=document.getElementById('testResult');
+  b.textContent='Testing…';b.disabled=true;r.textContent='';
+  try{const res=await fetch('{{ url_for("test_connection") }}',{method:'POST'});const d=await res.json();
+    r.textContent=d.msg;r.style.color=d.ok?'var(--green)':'var(--red)';}catch(e){r.textContent='Failed';r.style.color='var(--red)';}
+  b.textContent='Test Connection';b.disabled=false;
+});
+</script>
+{% endblock %}

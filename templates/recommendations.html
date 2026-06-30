@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Recommendations · Outleadz{% endblock %}
+{% block topbar %}Recommendations · across all campaigns{% endblock %}
+{% block content %}
+{% set s = data.summary %}
+<div class="page-header">
+  <h1>Recommendations</h1>
+  <p>Account-wide guidance from every campaign's data: what to fix, scale, and pause first.</p>
+</div>
+
+{% if data.recommendations or data.triage.fix_first or data.triage.scale %}
+<!-- Verdict -->
+<div class="verdict {{ s.health }}">
+  <div class="verdict-tag">Account focus: {{ s.bottleneck.stage }}</div>
+  <div class="verdict-text">{{ s.bottleneck.verdict }}</div>
+  <div style="font-size:12px;color:var(--muted);margin-top:8px">
+    {{ s.n_campaigns }} campaigns analysed · account open {{ s.acct_open }}% · account reply {{ s.acct_reply }}%
+  </div>
+</div>
+
+<!-- Triage -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px">
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot red"></span>Fix first <span class="info" data-tip="Highest-volume campaigns with critical problems: they waste the most sends until fixed.">i</span></h2></div>
+    <div>
+      {% for it in data.triage.fix_first %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">Nothing critical: nice.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot green"></span>Scale <span class="info" data-tip="Campaigns already converting well: increase volume or clone them.">i</span></h2></div>
+    <div>
+      {% for it in data.triage.scale %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">No clear winners yet.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin:0">
+    <div class="table-header"><h2 style="font-size:13px"><span class="dot gray"></span>Review / pause <span class="info" data-tip="High send volume but no interest: pause and rethink before spending more.">i</span></h2></div>
+    <div>
+      {% for it in data.triage.review %}
+      <a href="{{ url_for('campaign_detail', cid=it.c.id) }}" style="display:block;padding:11px 16px;border-bottom:1px solid var(--border);text-decoration:none">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{{ it.c.name }}</div>
+        <div style="font-size:11px;color:var(--muted)">{{ it.reason }}</div>
+      </a>
+      {% else %}<div class="muted" style="padding:14px 16px;font-size:12px">None flagged.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Account-wide recommendations -->
+{% if data.recommendations %}
+<div class="table-wrap">
+  <div class="table-header">
+    <h2>What to do across the account <span class="info" data-tip="Systemic recommendations generated from patterns across all campaigns: deliverability, subjects, copy, A/B, timing, and your best performers to replicate.">i</span></h2>
+    <span class="muted" style="font-size:12px">
+      {% if s.counts.critical %}{{ s.counts.critical }} critical · {% endif %}
+      {% if s.counts.important %}{{ s.counts.important }} important · {% endif %}
+      {{ s.counts.opportunity }} opportunities
+    </span>
+  </div>
+  <div>
+    {% for rec in data.recommendations %}
+    <div class="rec rec-{{ rec.color }}">
+      <div class="rec-head">
+        <span class="rec-cat">{{ rec.category }}</span>
+        <span class="rec-sev {{ rec.color }}">{{ rec.severity }}</span>
+      </div>
+      <div class="rec-title">{{ rec.title }}</div>
+      <div class="rec-detail">{{ rec.detail }}</div>
+      <div class="rec-action"><b>Do this:</b> {{ rec.action }}</div>
+      <div class="rec-evidence">{{ rec.evidence }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">Not enough campaign data yet: click <strong>Sync Now</strong>, then send a few campaigns.</div>
+{% endif %}
+{% endblock %}

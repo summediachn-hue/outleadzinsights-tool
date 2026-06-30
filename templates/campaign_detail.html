@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}{{ c.name }} · Campaigns{% endblock %}
+{% block content %}
+{% from "_reccards.html" import rec_list %}
+<div style="margin-bottom:14px"><a href="{{ url_for('campaigns') }}" style="color:var(--muted);font-size:13px;text-decoration:none">← Campaigns</a></div>
+<div class="page-header">
+  <h1>{{ c.name }}</h1>
+  <p><span class="status"><span class="dot {{ 'green' if c.status_code==1 else 'gray' }}"></span>{{ c.status_label }}</span>
+     &nbsp;·&nbsp;{{ c.total_leads }} leads · {{ c.emails_sent_count }} sent · timezone {{ c.timezone }}
+     {% if not c.link_tracking %}· <span class="muted">link tracking off</span>{% endif %}</p>
+</div>
+
+<!-- Date range (controls the trend chart + best day/time below) -->
+<form class="tf-bar" method="get" action="{{ url_for('campaign_detail', cid=c.id) }}">
+  <span class="tf-label">Date range <span class="info" data-tip="Filters the Performance Over Time chart and the Best day &amp; time section. The metric cards above stay as this campaign's lifetime totals.">i</span></span>
+  {% for val,label in timeframes %}
+  <a href="{{ url_for('campaign_detail', cid=c.id) }}?days={{ val }}" class="tf-pill {{ 'active' if active_tf==val }}">{{ label }}</a>
+  {% endfor %}
+  <a href="#" class="tf-pill {{ 'active' if active_tf=='custom' }}" id="customToggle">Custom range</a>
+  <span class="daterange {{ 'show' if active_tf=='custom' }}" id="dateRange">
+    <input type="date" name="start" value="{{ start_str }}" aria-label="Start date">
+    <span class="muted" style="font-size:12px">to</span>
+    <input type="date" name="end" value="{{ end_str }}" aria-label="End date">
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+  </span>
+</form>
+
+<div class="cards">
+  <div class="card"><div class="label">Leads <span class="info" data-tip="The number of prospects loaded into this campaign.">i</span></div><div class="value accent">{{ c.total_leads }}</div><div class="sub">in this campaign</div></div>
+  <div class="card"><div class="label">Sent <span class="info" data-tip="Total emails sent across all steps of this campaign's sequence.">i</span></div><div class="value">{{ c.emails_sent_count }}</div></div>
+  <div class="card"><div class="label">Open Rate <span class="info" data-tip="Share of contacted people who opened at least one email. 'Repeat' is total opens divided by unique opens: higher means people re-open, a sign of interest.">i</span></div><div class="value {{ 'green' if c.open_rate>=30 else '' }}">{{ c.open_rate }}%</div><div class="sub">{{ c.open_count_unique }} unique · {{ c.repeat_open_ratio }}× repeat</div></div>
+  <div class="card"><div class="label">Reply Rate <span class="info" data-tip="Share of contacted people who wrote back.">i</span></div><div class="value {{ 'green' if c.reply_rate>=4 else '' }}">{{ c.reply_rate }}%</div><div class="sub">{{ c.reply_count_unique }} replies</div></div>
+  <div class="card"><div class="label">Warm <span class="info" data-tip="People who opened this campaign's emails 3 or more times: strong interest even without a reply.">i</span></div><div class="value orange">{{ warm|length }}</div><div class="sub">opened {{ warm_threshold }}+ times</div></div>
+  <div class="card"><div class="label">Interested <span class="info" data-tip="People Instantly classified as interested or positive.">i</span></div><div class="value green">{{ c.total_interested }}</div></div>
+  <div class="card"><div class="label">Pipeline <span class="info" data-tip="Estimated dollar value of opportunities created by this campaign.">i</span></div><div class="value green">${{ '{:,}'.format(c.total_opportunity_value|int) }}</div></div>
+</div>
+
+<!-- ── Data-backed recommendations (the core) ── -->
+{% set rsum = recs.summary %}
+<div class="verdict {{ rsum.health }}">
+  <div class="verdict-tag">Recommended focus: {{ rsum.bottleneck.stage }}</div>
+  <div class="verdict-text">{{ rsum.bottleneck.verdict }}</div>
+</div>
+
+{% if recs.recommendations %}
+<div class="table-wrap">
+  <div class="table-header">
+    <h2>Recommendations <span class="info" data-tip="Specific actions for this campaign, generated from its real data: deliverability, subject lines, copy, sequence, A/B, timing and targeting. Sorted by impact.">i</span></h2>
+    <span class="muted" style="font-size:12px">
+      {% if rsum.counts.critical %}{{ rsum.counts.critical }} critical · {% endif %}
+      {% if rsum.counts.important %}{{ rsum.counts.important }} important · {% endif %}
+      {{ rsum.counts.opportunity }} opportunities
+    </span>
+  </div>
+  {{ rec_list(recs.recommendations, 3) }}
+</div>
+{% else %}
+<div class="callout neutral"><h3>Not enough data yet</h3>
+  <ul><li>This campaign needs more sends before reliable recommendations can be generated.</li></ul>
+</div>
+{% endif %}
+
+<!-- Performance over time (was the Trends tab) -->
+{% if daily %}
+<div class="table-wrap">
+  <div class="table-header"><h2>Performance Over Time <span class="info" data-tip="This campaign's open and reply rate per day, with people contacted shown as the dashed line.">i</span></h2></div>
+  <div style="padding:18px;height:280px"><canvas id="campChart"></canvas></div>
+</div>
+{% endif %}
+
+{% if steps %}
+<div class="table-wrap">
+  <div class="table-header"><h2>Sequence Step Performance</h2></div>
+  <table>
+    <tr><th>Step</th><th>Subject</th><th>Sent</th><th>Opened</th><th>Open %</th><th>Replies</th><th>Reply %</th><th>Assessment</th></tr>
+    {% for s in steps %}
+    <tr>
+      <td><span class="badge blue">{{ s.step }}</span></td>
+      <td><strong>{{ s.subject }}</strong></td>
+      <td class="muted">{{ s.sent }}</td><td>{{ s.unique_opened }}</td>
+      <td class="{{ 'rate-good' if s.open_rate>=30 else 'rate-warn' if s.open_rate>=15 else 'rate-bad' }}">{{ s.open_rate }}%</td>
+      <td>{{ s.unique_replies }}</td>
+      <td class="{{ 'rate-good' if s.reply_rate>=4 else 'rate-warn' if s.reply_rate>=2 else 'rate-bad' }}">{{ s.reply_rate }}%</td>
+      <td>{% if s.reply_rate>=4 %}<span class="status"><span class="dot green"></span>Converting</span>
+        {% elif s.open_rate>=25 and s.reply_rate<3 %}<span class="status"><span class="dot yellow"></span>Opens, no replies</span>
+        {% elif s.open_rate<15 %}<span class="status"><span class="dot red"></span>Low opens</span>
+        {% else %}<span class="status"><span class="dot gray"></span>Average</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- A/B variant tests (was the Scripts tab) -->
+{% if ab %}
+<div class="table-wrap">
+  <div class="table-header"><h2>A/B Variant Tests <span class="info" data-tip="Steps that have more than one subject/copy variant, and which variant wins on reply rate.">i</span></h2></div>
+  {% for test in ab %}
+  <div style="padding:8px 16px 4px;font-size:12px;color:var(--muted)">Step {{ test.step }} · <span class="status" style="display:inline-flex"><span class="dot green"></span>winner: variant {{ test.winner }}</span></div>
+  <table style="margin-bottom:8px">
+    <tr><th>Variant</th><th>Subject</th><th>Sent</th><th>Open %</th><th>Reply %</th></tr>
+    {% for v in test.variants %}
+    <tr>
+      <td><span class="badge {{ 'green' if v.variant==test.winner else 'gray' }}">{{ v.variant }}</span></td>
+      <td>{{ v.subject }}</td><td class="muted">{{ v.sent }}</td><td>{{ v.open_rate }}%</td><td>{{ v.reply_rate }}%</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Timezone-aware timing (shared partial, this campaign's timezone) -->
+{% set timing_title = 'This Campaign' %}
+{% include "_timing.html" %}
+
+{% if warm %}
+<div class="table-wrap">
+  <div class="table-header"><h2>Warm Leads</h2><a href="{{ url_for('leads') }}?f=warm&cid={{ c.id }}" class="btn btn-secondary btn-sm">All</a></div>
+  <table>
+    <tr><th>Name</th><th>Company</th><th>Opens</th><th>Score</th><th>LinkedIn</th><th></th></tr>
+    {% for l in warm[:15] %}
+    <tr>
+      <td><strong>{{ l.full_name }}</strong></td><td class="muted">{{ l.company_name or l.company_domain }}</td>
+      <td><span class="intent-chip">{{ l.email_open_count }}×</span></td><td class="muted">{{ l.warm_score }}</td>
+      <td>{% if l.linkedin_url %}<a href="{{ l.linkedin_url }}" target="_blank">LinkedIn ↗</a>{% endif %}</td>
+      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('customToggle')?.addEventListener('click',function(e){
+  e.preventDefault(); document.getElementById('dateRange').classList.toggle('show');
+});
+</script>
+{% if daily %}
+<script>
+const cd = {{ daily|tojson }};
+new Chart(document.getElementById('campChart'), {
+  type:'line',
+  data:{labels:cd.map(d=>d.date.slice(5)),datasets:[
+    {label:'Open rate %',data:cd.map(d=>d.open_rate),borderColor:'#5b54f0',backgroundColor:'rgba(91,84,240,.08)',tension:.35,fill:true,yAxisID:'y',pointRadius:0,pointHoverRadius:4,borderWidth:2},
+    {label:'Reply rate %',data:cd.map(d=>d.reply_rate),borderColor:'#0d9488',backgroundColor:'rgba(13,148,136,.08)',tension:.35,fill:true,yAxisID:'y',pointRadius:0,pointHoverRadius:4,borderWidth:2},
+    {label:'Contacted',data:cd.map(d=>d.contacted),borderColor:'#94a3b8',borderDash:[4,4],tension:.35,yAxisID:'y1',pointRadius:0,borderWidth:1.5}]},
+  options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{boxWidth:12,font:{size:11},usePointStyle:true,pointStyle:'circle'}}},
+    scales:{y:{position:'left',title:{display:true,text:'%'},grid:{color:'#eef0f4'}},
+      y1:{position:'right',title:{display:true,text:'volume'},grid:{drawOnChartArea:false}},x:{grid:{color:'#eef0f4'}}}}
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,53 @@
+{# Timezone-aware engagement timing — heatmap matrix + insight headline.
+   Expects `timing`; optional `timing_title`. #}
+{% macro heatmap(timing, grid, maxv, metric) -%}
+<div class="hm">
+  <div></div>
+  {% for b in timing.buckets %}<div class="hm-colh">{{ b }}</div>{% endfor %}
+  {% for d in timing.days %}
+    <div class="hm-rowh">{{ d }}</div>
+    {% for b in timing.buckets %}
+      {% set v = grid[d][b] %}
+      {% set o = (v / maxv) if maxv else 0 %}
+      {% set rgb = '91,84,240' if metric == 'opens' else '13,148,136' %}
+      <div class="hm-cell" title="{{ d }} {{ b }}: {{ v }}"
+           style="background:rgba({{ rgb }},{{ 0.05 + o * 0.9 }});color:{{ '#fff' if o > 0.42 else ('var(--text)' if v else 'var(--dim)') }}">{{ v if v else '' }}</div>
+    {% endfor %}
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+<div class="table-wrap">
+  <div class="table-header">
+    <h2>When {{ timing_title or 'Your Emails' }} Get Engagement
+      <span class="info" data-tip="A heatmap of when prospects open and reply — darker means more activity. Shown in each campaign's own local timezone (read from Instantly). Use the hot cell to time sends and follow-ups.">i</span></h2>
+    <span class="muted" style="font-size:12px">{{ timing.tz_label }}</span>
+  </div>
+  <div style="padding:20px 22px">
+    {% if timing.total_opens or timing.total_replies %}
+    <div style="margin-bottom:22px">
+      {% if timing.best_open_day %}<div class="tlead">Opened most on <b>{{ timing.best_open_day }}</b>{% if timing.best_open_time %}, usually <b>{{ timing.best_open_time }}</b> ({{ timing.bucket_ranges[timing.best_open_time] }}){% endif %}.</div>{% endif %}
+      {% if timing.best_reply_day %}<div class="tlead">Replied most on <b style="color:var(--teal)">{{ timing.best_reply_day }}</b>{% if timing.best_reply_time %}, around <b style="color:var(--teal)">{{ timing.best_reply_time }}</b>{% endif %}.</div>{% endif %}
+    </div>
+
+    <div class="hm-title" style="color:var(--accent)">Opens</div>
+    {{ heatmap(timing, timing.grid, timing.max_cell, 'opens') }}
+
+    {% if timing.total_replies %}
+    <div class="hm-title" style="color:var(--teal);margin-top:26px">Replies</div>
+    {{ heatmap(timing, timing.grid_replies, timing.max_cell_replies, 'replies') }}
+    {% endif %}
+
+    <div class="hm-legend">
+      Fewer
+      <span class="hm-legc" style="background:rgba(91,84,240,.10)"></span>
+      <span class="hm-legc" style="background:rgba(91,84,240,.34)"></span>
+      <span class="hm-legc" style="background:rgba(91,84,240,.62)"></span>
+      <span class="hm-legc" style="background:rgba(91,84,240,.92)"></span>
+      More · hover any cell for the exact count
+    </div>
+    {% else %}
+    <div class="muted" style="font-size:13px">Not enough open or reply data in this period yet.</div>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Trends · Outleadz{% endblock %}
+{% block topbar %}Trends · all campaigns combined{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Trends</h1>
+  <p>Performance over time, period comparison, and when your campaigns get engagement.</p>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Contacted ({{ comparison.days }}d) <span class="info" data-tip="People emailed in the last 7 days, versus the 7 days before.">i</span></div>
+    <div class="value">{{ comparison.current.contacted }}</div>
+    <div class="sub {{ 'rate-good' if comparison.delta_contacted>=0 else 'rate-bad' }}">{{ '+' if comparison.delta_contacted>=0 }}{{ comparison.delta_contacted }} vs prev</div>
+  </div>
+  <div class="card">
+    <div class="label">Open Rate <span class="info" data-tip="Open rate in the last 7 days versus the 7 days before. 'pts' means percentage points of change.">i</span></div>
+    <div class="value {{ 'green' if comparison.current.open_rate>=30 else '' }}">{{ comparison.current.open_rate }}%</div>
+    <div class="sub {{ 'rate-good' if comparison.delta_open>=0 else 'rate-bad' }}">{{ '+' if comparison.delta_open>=0 }}{{ comparison.delta_open }} pts vs prev</div>
+  </div>
+  <div class="card">
+    <div class="label">Reply Rate <span class="info" data-tip="Reply rate in the last 7 days versus the 7 days before.">i</span></div>
+    <div class="value {{ 'green' if comparison.current.reply_rate>=4 else '' }}">{{ comparison.current.reply_rate }}%</div>
+    <div class="sub {{ 'rate-good' if comparison.delta_reply>=0 else 'rate-bad' }}">{{ '+' if comparison.delta_reply>=0 }}{{ comparison.delta_reply }} pts vs prev</div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header"><h2>Daily Performance (30 days) <span class="info" data-tip="Open rate and reply rate for each day, with the number of people contacted shown as a dashed line.">i</span></h2></div>
+  <div style="padding:18px;height:300px"><canvas id="dailyChart"></canvas></div>
+</div>
+
+<!-- Timezone-aware timing (shared partial) -->
+{% include "_timing.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+const daily = {{ daily|tojson }};
+new Chart(document.getElementById('dailyChart'), {
+  type:'line',
+  data:{labels:daily.map(d=>d.date.slice(5)),datasets:[
+    {label:'Open rate %',data:daily.map(d=>d.open_rate),borderColor:'#8b5cf6',backgroundColor:'rgba(139,92,246,.1)',tension:.3,fill:true,yAxisID:'y'},
+    {label:'Reply rate %',data:daily.map(d=>d.reply_rate),borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.1)',tension:.3,fill:true,yAxisID:'y'},
+    {label:'Contacted',data:daily.map(d=>d.contacted),borderColor:'#6366f1',borderDash:[4,4],tension:.3,yAxisID:'y1'}]},
+  options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},
+    scales:{y:{position:'left',title:{display:true,text:'%'},grid:{color:'#1a1d2e'}},
+      y1:{position:'right',title:{display:true,text:'volume'},grid:{drawOnChartArea:false}},x:{grid:{color:'#1a1d2e'}}}}
+});
+</script>
+{% endblock %}

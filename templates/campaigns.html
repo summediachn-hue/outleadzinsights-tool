@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Campaigns · Outleadz{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Campaigns</h1>
+  <p>Performance with automatic health diagnosis. Rates use unique counts.</p>
+</div>
+
+{% if data %}
+<div class="table-wrap">
+  <table>
+    <tr>
+      <th>Campaign</th><th>Status</th><th>Leads</th><th>Sent</th><th>Open %</th>
+      <th>Repeat <span class="info" data-tip="Total opens divided by unique opens. Above 1× means people re-open your emails: a sign of interest.">i</span></th>
+      <th>Reply %</th><th>Bounce</th><th>Interested</th><th>Pipeline</th>
+      <th>Warm <span class="info" data-tip="Leads who opened 3+ times: strong interest even without a reply.">i</span></th>
+      <th>Health <span class="info" data-tip="Automatic diagnosis: green is good, yellow needs attention, red is critical (deliverability or copy problems).">i</span></th><th></th>
+    </tr>
+    {% for row in data %}
+    {% set c = row.c %}{% set diag = row.diag %}
+    <tr>
+      <td><a href="{{ url_for('campaign_detail', cid=c.id) }}"><strong>{{ c.name }}</strong></a></td>
+      <td><span class="status"><span class="dot {{ 'green' if c.status_code==1 else 'gray' }}"></span>{{ c.status_label }}</span></td>
+      <td><strong>{{ c.total_leads }}</strong></td>
+      <td>{{ c.emails_sent_count }}</td>
+      <td class="{{ 'rate-good' if c.open_rate>=30 else 'rate-warn' if c.open_rate>=15 else 'rate-bad' }}">{{ c.open_rate }}%</td>
+      <td class="muted">{{ c.repeat_open_ratio }}×</td>
+      <td class="{{ 'rate-good' if c.reply_rate>=4 else 'rate-warn' if c.reply_rate>=2 else 'rate-bad' }}">{{ c.reply_rate }}%</td>
+      <td class="{{ 'rate-bad' if c.bounce_rate>5 else 'muted' }}">{{ c.bounce_rate }}%</td>
+      <td class="{{ 'rate-good' if c.total_interested>0 }}">{{ c.total_interested }}</td>
+      <td class="muted">{% if c.total_opportunity_value %}${{ '{:,}'.format(c.total_opportunity_value|int) }}{% else %}$0{% endif %}</td>
+      <td>{% if row.warm>0 %}<a href="{{ url_for('leads') }}?f=warm&cid={{ c.id }}" class="intent-chip">{{ row.warm }}</a>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td>
+        {% if diag.health=='good' %}<span class="status"><span class="dot green"></span>Good</span>
+        {% elif diag.health=='warning' %}<span class="status"><span class="dot yellow"></span>Warning</span>
+        {% elif diag.health=='critical' %}<span class="status"><span class="dot red"></span>Critical</span>
+        {% else %}<span class="status"><span class="dot gray"></span>No data</span>{% endif %}
+      </td>
+      <td><a href="{{ url_for('campaign_detail', cid=c.id) }}" class="btn btn-secondary btn-sm">Details</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No campaigns synced: click <strong>Sync Instantly</strong>.</div>
+{% endif %}
+{% endblock %}

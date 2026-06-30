@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Outleadz{% endblock %}
+{% block topbar %}Dashboard · all campaigns combined{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Everything across all your campaigns, in plain numbers. Hover any <span class="info" data-tip="Hover these icons anywhere in the app to see what a metric means in plain English.">i</span> to learn what a metric means.</p>
+</div>
+
+{% if not has_key %}
+<div class="callout neutral"><h3>Setup</h3>
+  <ul><li>Add <code>INSTANTLY_API_KEY</code> to <code>.env</code>, restart, then click <strong>Sync Now</strong>.</li></ul>
+</div>
+{% endif %}
+
+{% if account.summary.bottleneck.stage not in ['Data'] %}
+<div class="verdict {{ account.summary.health }}">
+  <div class="verdict-tag">Account focus: {{ account.summary.bottleneck.stage }}</div>
+  <div class="verdict-text">{{ account.summary.bottleneck.verdict }}</div>
+</div>
+{% endif %}
+
+<!-- Timeframe selector + custom range -->
+<form class="tf-bar" method="get" action="{{ url_for('dashboard') }}">
+  <span class="tf-label">Showing performance for:</span>
+  {% for val,label in timeframes %}
+  <a href="{{ url_for('dashboard') }}?days={{ val }}" class="tf-pill {{ 'active' if active_tf==val }}">{{ label }}</a>
+  {% endfor %}
+  <a href="#" class="tf-pill {{ 'active' if active_tf=='custom' }}" id="customToggle">Custom range</a>
+  <span class="daterange {{ 'show' if active_tf=='custom' }}" id="dateRange">
+    <input type="date" name="start" value="{{ start_str }}" aria-label="Start date">
+    <span class="muted" style="font-size:12px">to</span>
+    <input type="date" name="end" value="{{ end_str }}" aria-label="End date">
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+  </span>
+</form>
+
+<!-- Performance (timeframe-filtered) -->
+<div class="metric-grid">
+  <div class="metric">
+    <div class="m-label">Emails Sent <span class="info" data-tip="The total number of emails delivered to prospects during the selected time period.">i</span></div>
+    <div class="m-value">{{ '{:,}'.format(metrics.sent) }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Open Rate <span class="info" data-tip="Out of everyone you emailed, the share who opened at least one email. The number beside it is how many individual people that is.">i</span></div>
+    <div class="m-value">{{ metrics.open_rate }}%<span class="m-count">{{ '{:,}'.format(metrics.opens) }} people</span></div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Reply Rate <span class="info" data-tip="The share of people you emailed who wrote back. The number beside it is how many replies came in.">i</span></div>
+    <div class="m-value">{{ metrics.reply_rate }}%<span class="m-count">{{ '{:,}'.format(metrics.replies) }} replies</span></div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Opportunities <span class="info" data-tip="Replies that turned into real sales opportunities: someone interested, a meeting booked, or a deal.">i</span></div>
+    <div class="m-value">{{ metrics.opportunities }}</div>
+  </div>
+</div>
+
+<!-- Lifetime totals -->
+<div style="font-size:12px;color:var(--muted);margin:18px 0 10px;text-transform:uppercase;letter-spacing:.7px">Lifetime totals (all time)</div>
+<div class="metric-grid">
+  <div class="metric">
+    <div class="m-label">Total Leads <span class="info" data-tip="Every prospect uploaded across all your campaigns.">i</span></div>
+    <div class="m-value">{{ '{:,}'.format(life.total_leads) }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Warm Leads <span class="info" data-tip="People who opened your emails 3 or more times: a strong sign of interest even if they have not replied yet.">i</span></div>
+    <div class="m-value" style="color:var(--orange)">{{ life.warm_leads }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Interested <span class="info" data-tip="People who replied positively or asked to talk, as classified by Instantly.">i</span></div>
+    <div class="m-value" style="color:var(--green)">{{ life.interested }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Pipeline Value <span class="info" data-tip="The estimated dollar value of all opportunities created from this outreach.">i</span></div>
+    <div class="m-value" style="color:var(--green)">${{ '{:,}'.format(life.pipeline_value) }}</div>
+  </div>
+</div>
+
+<!-- Account priorities + recommendations (command center) -->
+{% include "_account_recs.html" %}
+
+<!-- Funnel -->
+<div class="table-wrap" style="margin-top:24px">
+  <div class="table-header"><h2>Conversion Funnel <span class="info" data-tip="How prospects move from emailed, to opened, to replied, to opportunity. Each bar is a share of everyone contacted.">i</span></h2></div>
+  <div style="padding:18px">
+    {% set maxv = funnel[0].value if funnel and funnel[0].value else 1 %}
+    {% for f in funnel %}
+    <div class="funnel-row">
+      <div class="funnel-label">{{ f.label }}</div>
+      <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:{{ (f.value/maxv*100) if maxv else 0 }}%;background:{{ f.color }}">{{ '{:,}'.format(f.value) }}</div></div>
+      <div class="funnel-pct">{{ f.pct_of_contacted }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Timezone-aware timing (shared partial) -->
+{% include "_timing.html" %}
+
+<!-- Hidden intent -->
+<div class="table-wrap">
+  <div class="table-header">
+    <h2><span class="dot orange"></span>Hidden Intent: Opened {{ warm_threshold }}+ Times, Never Replied
+      <span class="info" data-tip="These prospects keep opening your emails but have not replied. High interest, no response yet: your best follow-up targets.">i</span></h2>
+    <a href="{{ url_for('leads') }}?f=hidden" class="btn btn-secondary btn-sm">View all</a>
+  </div>
+  {% if hidden %}
+  <table>
+    <tr><th>Name</th><th>Company</th><th>Opens</th><th>Score</th><th>LinkedIn</th><th></th></tr>
+    {% for l in hidden %}
+    <tr>
+      <td><strong>{{ l.full_name }}</strong></td>
+      <td class="muted">{{ l.company_name or l.company_domain }}</td>
+      <td><span class="intent-chip">{{ l.email_open_count }}× open</span></td>
+      <td class="muted">{{ l.warm_score }}</td>
+      <td>{% if l.linkedin_url %}<a href="{{ l.linkedin_url }}" target="_blank">LinkedIn ↗</a>{% endif %}</td>
+      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty-state">No data yet: click <strong>Sync Now</strong>.</div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('customToggle')?.addEventListener('click',function(e){
+  e.preventDefault();
+  document.getElementById('dateRange').classList.toggle('show');
+});
+</script>
+{% endblock %}

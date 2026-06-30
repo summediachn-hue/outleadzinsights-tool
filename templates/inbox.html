@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Inbox · Outleadz{% endblock %}
+{% block topbar %}Inbox · prospect replies{% endblock %}
+
+{% block content %}
+<div class="inbox-layout">
+
+  {# ── Left: thread list ── #}
+  <div class="inbox-list">
+    <div class="inbox-list-header">
+      <h2>Replies</h2>
+      {% if threads %}<span class="inbox-count">{{ threads|length }}</span>{% endif %}
+    </div>
+    <div class="inbox-scroll">
+      {% if not threads %}
+      <div style="padding:32px 20px;text-align:center;color:var(--dim);font-size:13px">
+        No replies yet — click Sync Now to load.
+      </div>
+      {% endif %}
+      {% for th in threads %}
+      {% set msg = th.latest_msg %}
+      {% set p   = th.prospect %}
+      {% set c   = th.campaign %}
+      <a href="{{ url_for('inbox') }}?t={{ th.thread_id }}"
+         class="inbox-thread{{ ' active' if active_thread_id == th.thread_id }}">
+        <div class="it-row1">
+          <div class="it-name">
+            {% if p %}{{ p.full_name }}
+            {% elif msg.from_address %}{{ msg.from_address.split('@')[0] }}
+            {% else %}Unknown{% endif %}
+          </div>
+          <div class="it-time">{{ msg.timestamp_email.strftime('%b %d') if msg.timestamp_email }}</div>
+        </div>
+        <div class="it-co">
+          {% if p and p.company_name %}{{ p.company_name }}{% elif p %}{{ p.email }}{% else %}{{ msg.from_address or '' }}{% endif %}
+          {% if c %}<span style="color:var(--dim)"> · {{ c.name }}</span>{% endif %}
+        </div>
+        <div class="it-snippet">{{ msg.preview }}</div>
+        {% if p %}
+        <div class="it-badges">
+          {% if p.disposition %}
+          <span class="badge {{ 'green' if p.disposition=='interested' else ('yellow' if p.disposition=='not_now' else ('red' if p.disposition in ('not_interested','wrong_person') else 'gray')) }}">{{ p.disposition.replace('_',' ').title() }}</span>
+          {% elif p.interest_label %}
+          <span class="badge gray">{{ p.interest_label }}</span>
+          {% endif %}
+          {% if p.stage %}<span class="badge accent">{{ p.stage }}</span>{% endif %}
+        </div>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ── Right: thread detail ── #}
+  <div class="inbox-right">
+    {% if not active_thread_id %}
+      <div class="inbox-empty-state">
+        <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <div style="font-weight:600">Select a conversation</div>
+        <div style="font-size:12.5px">Click any reply on the left</div>
+      </div>
+
+    {% elif not messages %}
+      <div class="inbox-empty-state">
+        <div style="font-weight:600">No messages in this thread</div>
+        <div style="font-size:12.5px">Try syncing again</div>
+      </div>
+
+    {% else %}
+
+    {# Header #}
+    <div class="thread-hd">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0;flex:1">
+          <div class="th-name">{{ prospect.full_name if prospect else 'Unknown' }}</div>
+          <div class="th-meta">
+            {% if prospect %}{{ prospect.email }}{% if prospect.company_name %} · {{ prospect.company_name }}{% endif %}{% if prospect.job_title %} · {{ prospect.job_title }}{% endif %}{% endif %}
+            {% if campaign %} · <b>{{ campaign.name }}</b>{% endif %}
+          </div>
+        </div>
+        <div class="th-actions">
+          {% if prospect and prospect.linkedin_url %}
+          <a href="{{ prospect.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm">LinkedIn</a>
+          {% endif %}
+          {% if prospect %}
+          <a href="{{ url_for('lead_detail', email=prospect.email) }}" class="btn btn-secondary btn-sm">Full Profile</a>
+          {% endif %}
+        </div>
+      </div>
+      {% if prospect %}
+      <div class="th-disp" id="dispRow" data-email="{{ prospect.email }}">
+        <span style="font-size:11.5px;color:var(--muted);font-weight:500">Mark as:</span>
+        {% for d in ['interested','not_now','not_interested','wrong_person','unsubscribed'] %}
+        <button type="button" class="disp-btn {{ d }}{{ ' active' if prospect.disposition == d }}"
+                onclick="setDisp('{{ d }}')">{{ d.replace('_',' ').title() }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    {# Email cards #}
+    <div class="thread-msgs" id="threadMsgs">
+      {% for msg in messages %}
+      {% set sent = msg.ue_type == 1 %}
+      <div class="ecard {{ 'sent' if sent else 'recv' }}">
+        <div class="ecard-head">
+          <div class="ecard-from">
+            {{ msg.eaccount if sent else msg.from_address }}
+            {% if sent and msg.to_address %}
+            <span class="to">→ {{ msg.to_address.split(',')[0] }}</span>
+            {% endif %}
+          </div>
+          {% if msg.step %}<span class="ecard-step">Step {{ msg.step }}</span>{% endif %}
+          {% if msg.timestamp_email %}<span class="ecard-date">{{ msg.timestamp_email.strftime('%b %d, %H:%M') }}</span>{% endif %}
+          <span class="ecard-tag">{{ 'Sent' if sent else 'Reply' }}</span>
+        </div>
+        <div class="ecard-body">{{ msg.body_text or msg.subject or '(empty)' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Reply box #}
+    {% set last_recv = messages | selectattr('ue_type','equalto',2) | list | last %}
+    {% set last_sent = messages | selectattr('ue_type','equalto',1) | list | last %}
+    <div class="reply-box">
+      <textarea id="replyBody" placeholder="Write your reply…"></textarea>
+      <div class="reply-actions">
+        <span class="reply-hint">Sending from <b>{{ (last_sent.eaccount if last_sent else '') or 'your mailbox' }}</b></span>
+        <button type="button" class="btn btn-primary" onclick="sendReply()" id="sendBtn">Send Reply</button>
+      </div>
+      <div class="send-status" id="sendStatus"></div>
+    </div>
+
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Scroll to bottom of thread on load
+(function(){
+  const c = document.getElementById('threadMsgs');
+  if(c) c.scrollTop = c.scrollHeight;
+})();
+
+function setDisp(d) {
+  const row = document.getElementById('dispRow');
+  if (!row) return;
+  row.querySelectorAll('.disp-btn').forEach(b => {
+    b.classList.remove('active');
+    if (b.textContent.trim().toLowerCase() === d.replace(/_/g,' ')) b.classList.add('active');
+  });
+  fetch('{{ url_for("inbox_disposition") }}', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({prospect_email: row.dataset.email, disposition: d})
+  });
+}
+
+function sendReply() {
+  const body = document.getElementById('replyBody').value.trim();
+  if (!body) return;
+  const btn = document.getElementById('sendBtn');
+  const st  = document.getElementById('sendStatus');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  st.className = 'send-status'; st.textContent = '';
+
+  {% if messages and (messages | selectattr('ue_type','equalto',2) | list) %}
+  {% set last_recv = messages | selectattr('ue_type','equalto',2) | list | last %}
+  {% set last_sent = messages | selectattr('ue_type','equalto',1) | list | last %}
+  const payload = {
+    email_id: '{{ last_recv.id }}',
+    body: body,
+    eaccount: '{{ last_sent.eaccount if last_sent else "" }}',
+    prospect_email: '{{ prospect.email if prospect else "" }}',
+    thread_id: '{{ active_thread_id }}'
+  };
+  {% else %}
+  const payload = {email_id:'',body:body,eaccount:'',prospect_email:'',thread_id:''};
+  {% endif %}
+
+  fetch('{{ url_for("inbox_reply") }}', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  }).then(r=>r.json()).then(d=>{
+    btn.disabled = false; btn.textContent = 'Send Reply';
+    st.className = 'send-status ' + (d.ok ? 'ok' : 'err');
+    st.textContent = d.ok ? 'Reply sent. Sync to see it in the thread.' : 'Error: ' + d.msg;
+    if (d.ok) document.getElementById('replyBody').value = '';
+  }).catch(()=>{
+    btn.disabled = false; btn.textContent = 'Send Reply';
+    st.className = 'send-status err'; st.textContent = 'Network error — try again.';
+  });
+}
+</script>
+{% endblock %}
