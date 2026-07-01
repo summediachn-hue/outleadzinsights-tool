@@ -413,6 +413,25 @@ def run_sync(client: InstantlyClient, since_days: int = 60, account_id: int = No
                 p.disposition = disp
                 if wake_days:
                     p.wake_date = today + timedelta(days=wake_days)
+        else:
+            # Re-sync: advance stage when signals clearly warrant it.
+            # Never downgrade. Never touch terminal stages (Lost, Nurture, Won).
+            _STAGE_RANK = {"New": 0, "Contacted": 1, "Engaged": 2,
+                           "Replied": 3, "Meeting": 4, "Won": 5}
+            cur = _STAGE_RANK.get(p.stage, -1)
+            if interest_code in (2, 3):              # meeting booked / completed
+                tgt, trk = "Meeting", 4
+            elif interest_code == 4:                  # closed / won
+                tgt, trk = "Won", 5
+            elif p.email_reply_count > 0 or interest_code == 1:  # replied or interested
+                tgt, trk = "Replied", 3
+            elif p.email_open_count > 0 and cur == 0:  # opened, still New
+                tgt, trk = "Engaged", 2
+            else:
+                tgt, trk = None, -1
+            if tgt and trk > cur and p.stage not in ("Lost", "Nurture"):
+                p.stage = tgt
+                p.stage_changed_at = datetime.utcnow()
 
         db.session.add(p)
 

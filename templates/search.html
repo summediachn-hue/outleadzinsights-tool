@@ -27,7 +27,7 @@
     <tr>
       <td><strong>{{ c.name }}</strong></td>
       <td><span class="badge {{ 'green' if c.status=='active' else 'gray' }}">{{ c.status or 'unknown' }}</span></td>
-      <td class="muted">{{ c.leads_count or '—' }}</td>
+      <td class="muted">{{ c.leads_count or '' }}</td>
       <td><a href="{{ url_for('campaign_detail', cid=c.id) }}" class="btn btn-secondary btn-sm">View</a></td>
     </tr>
     {% endfor %}
@@ -52,8 +52,8 @@
         <span class="status">{% if l.is_warm %}<span class="dot orange" title="Warm"></span>{% endif %}<strong>{{ l.full_name }}</strong></span>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ l.email }}</div>
       </td>
-      <td class="muted">{{ l.company_name or l.company_domain or '—' }}</td>
-      <td style="font-size:12.5px;color:var(--muted)">{{ l.job_title or '—' }}</td>
+      <td class="muted">{{ l.company_name or l.company_domain or '' }}</td>
+      <td style="font-size:12.5px;color:var(--muted)">{{ l.job_title or '' }}</td>
       <td><span class="badge {{ 'green' if l.stage=='Won' else 'orange' if l.stage in ['Meeting','Replied'] else 'blue' if l.stage=='Engaged' else 'gray' }}">{{ l.stage }}</span></td>
       <td>{% if l.email_open_count>=3 %}<span class="intent-chip">{{ l.email_open_count }}</span>{% elif l.email_open_count>0 %}<span class="badge yellow">{{ l.email_open_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
       <td>{% if l.email_reply_count>0 %}<span class="badge green">{{ l.email_reply_count }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>

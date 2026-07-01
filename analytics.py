@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from models import (
     db, Campaign, CampaignStep, DailyMetric, Prospect, SendingAccount,
+    HeyReachCampaign, HeyReachLead, Event,
     WARM_THRESHOLD, ROTTING_DAYS,
 )
 
@@ -859,3 +860,500 @@ def sentiment_breakdown(account_id=None) -> List[Dict]:
                "Wrong Person": "#d63b3b", "Lost": "#d63b3b"}
     return [{"label": lbl, "count": cnt, "color": palette.get(lbl, "#6366f1")}
             for lbl, cnt in sorted(rows, key=lambda x: -x[1])]
+
+
+# ── HeyReach (LinkedIn) analytics ─────────────────────────────────────────────
+
+def heyreach_kpis(account_id: int) -> Dict:
+    """Top-level LinkedIn KPIs for the dashboard."""
+    campaigns = HeyReachCampaign.query.filter_by(account_id=account_id).all()
+    # leads_contacted = people who actually started the sequence (in_progress + finished + failed)
+    # total_leads includes queued-but-not-yet-started; exclude those
+    leads_contacted = sum((c.leads_in_progress or 0) + (c.leads_finished or 0) + (c.leads_failed or 0) for c in campaigns)
+    total_finished  = sum(c.leads_finished or 0 for c in campaigns)
+
+    lq = HeyReachLead.query.filter_by(account_id=account_id)
+    total_leads    = lq.count()
+    interested     = lq.filter_by(tag_interested=True).count()
+    not_interested = lq.filter_by(tag_not_interested=True).count()
+    generic        = lq.filter_by(tag_generic=True).count()
+    any_response   = interested + not_interested + generic
+
+    # Rate denominators use leads_contacted (actually messaged), not total_leads (DB count)
+    return {
+        "campaigns":       len(campaigns),
+        "total_sent":      leads_contacted,
+        "total_finished":  total_finished,
+        "completion_rate": _pct(total_finished, leads_contacted),
+        "total_leads":     total_leads,
+        "interested":      interested,
+        "not_interested":  not_interested,
+        "generic":         generic,
+        "any_response":    any_response,
+        "interest_rate":   _pct(interested, leads_contacted),
+        "response_rate":   _pct(any_response, leads_contacted),
+    }
+
+
+def heyreach_campaigns(account_id: int) -> List:
+    return (HeyReachCampaign.query
+            .filter_by(account_id=account_id)
+            .order_by(HeyReachCampaign.created_at.desc())
+            .all())
+
+
+def _norm(s: str) -> str:
+    import re as _re
+    return _re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+
+def cross_channel_leads(account_id: int, limit: int = 50) -> List[Dict]:
+    """
+    Match HeyReach LinkedIn leads to Instantly email prospects by
+    normalised (first+last name, company). Score each matched lead
+    on multi-channel engagement signals and return sorted by score desc.
+
+    Score weights:
+        +2  matched on BOTH channels (base multi-channel bonus)
+        +1  email opened 1-2x
+        +2  email opened 3-4x
+        +3  email opened 5+x
+        +3  email replied
+        +4  email disposition = interested
+        +5  email stage = Meeting / Won
+        +3  LinkedIn tag = Interested
+        -3  LinkedIn tag = Not Interested
+    Tiers: Hot ≥ 7 | Warm 3-6 | Contacted 1-2
+    """
+    # Pull all HeyReach leads for this account
+    hr_leads = HeyReachLead.query.filter_by(account_id=account_id).all()
+    if not hr_leads:
+        return []
+
+    # Build lookup: (norm_name, norm_company) → HeyReachLead
+    hr_map: dict[tuple, HeyReachLead] = {}
+    for hl in hr_leads:
+        key = (_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name))
+        hr_map[key] = hl   # last-write wins for dupes
+
+    # Pull all Instantly prospects for this account
+    prospects = Prospect.query.filter_by(account_id=account_id).all()
+
+    results = []
+
+    # Track which HeyReach leads were matched (to include unmatched LinkedIn-only leads)
+    matched_hr_ids = set()
+
+    for p in prospects:
+        key = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        hr_lead = hr_map.get(key)
+
+        score = 0
+        signals = []
+
+        # Email signals
+        opens = p.email_open_count or 0
+        if opens >= 5:
+            score += 3; signals.append(f"Opened {opens}x")
+        elif opens >= 3:
+            score += 2; signals.append(f"Opened {opens}x")
+        elif opens >= 1:
+            score += 1; signals.append(f"Opened {opens}x")
+
+        if p.email_reply_count and p.email_reply_count > 0:
+            score += 3; signals.append("Replied to email")
+
+        if p.disposition == "interested":
+            score += 4; signals.append("Email: Interested")
+
+        if p.stage in ("Meeting", "Won"):
+            score += 5; signals.append(f"Stage: {p.stage}")
+
+        if hr_lead:
+            matched_hr_ids.add(hr_lead.id)
+            score += 2   # multi-channel bonus
+            signals.append("On LinkedIn")
+
+            if hr_lead.tag_interested:
+                score += 3; signals.append("LinkedIn: Interested")
+            if hr_lead.tag_not_interested:
+                score -= 3; signals.append("LinkedIn: Not interested")
+
+        if score <= 0:
+            continue
+
+        tier = "Hot" if score >= 7 else "Warm" if score >= 3 else "Contacted"
+
+        results.append({
+            "score": score,
+            "tier": tier,
+            "signals": signals,
+            "prospect": p,
+            "hr_lead": hr_lead,
+            "on_both": hr_lead is not None,
+        })
+
+    # Also include HeyReach-only leads that are Interested but not matched
+    for hl in hr_leads:
+        if hl.id in matched_hr_ids:
+            continue
+        if not hl.tag_interested:
+            continue
+        score = 3   # LinkedIn Interested baseline
+        results.append({
+            "score": score,
+            "tier": "Warm",
+            "signals": ["LinkedIn: Interested", "LinkedIn only"],
+            "prospect": None,
+            "hr_lead": hl,
+            "on_both": False,
+        })
+
+    results.sort(key=lambda x: -x["score"])
+    return results[:limit]
+
+
+# ── LinkedIn lead pages ────────────────────────────────────────────────────────
+
+def linkedin_leads_filtered(account_id, campaign_id=None, tag=None, search=None, limit=500):
+    """Filtered + sorted HeyReach lead list for the LinkedIn leads page."""
+    q = HeyReachLead.query.filter_by(account_id=account_id)
+    if campaign_id:
+        q = q.filter(HeyReachLead.campaign_id == campaign_id)
+    if tag == "interested":
+        q = q.filter(HeyReachLead.tag_interested == True)
+    elif tag == "not_interested":
+        q = q.filter(HeyReachLead.tag_not_interested == True)
+    elif tag == "generic":
+        q = q.filter(HeyReachLead.tag_generic == True)
+    elif tag == "untagged":
+        q = q.filter(
+            HeyReachLead.tag_interested == False,
+            HeyReachLead.tag_not_interested == False,
+            HeyReachLead.tag_generic == False,
+        )
+    if search:
+        s = f"%{search}%"
+        q = q.filter(db.or_(
+            HeyReachLead.first_name.ilike(s),
+            HeyReachLead.last_name.ilike(s),
+            HeyReachLead.company_name.ilike(s),
+            HeyReachLead.headline.ilike(s),
+            HeyReachLead.position.ilike(s),
+        ))
+    return q.order_by(
+        HeyReachLead.tag_interested.desc(),
+        HeyReachLead.tag_generic.desc(),
+        HeyReachLead.first_name.asc(),
+    ).limit(limit).all()
+
+
+def linkedin_cross_match(account_id, leads):
+    """Return {lead.id: Prospect} for any LinkedIn leads that match an email prospect."""
+    prospects = Prospect.query.filter_by(account_id=account_id).all()
+    prospect_map = {}
+    for p in prospects:
+        key = (
+            _norm(p.first_name or "") + _norm(p.last_name or ""),
+            _norm(p.company_name or p.company_domain or ""),
+        )
+        if key[0] or key[1]:
+            prospect_map[key] = p
+    matched = {}
+    for lead in leads:
+        key = (
+            _norm(lead.first_name or "") + _norm(lead.last_name or ""),
+            _norm(lead.company_name or ""),
+        )
+        if key in prospect_map:
+            matched[lead.id] = prospect_map[key]
+    return matched
+
+
+def linkedin_audience_insights(account_id, campaign_id=None):
+    """Top companies, job titles, and locations from HeyReach leads."""
+    q = HeyReachLead.query.filter_by(account_id=account_id)
+    if campaign_id:
+        q = q.filter(HeyReachLead.campaign_id == campaign_id)
+    leads = q.all()
+    companies: Counter = Counter()
+    titles: Counter = Counter()
+    locations: Counter = Counter()
+    for lead in leads:
+        if lead.company_name and lead.company_name.strip():
+            companies[lead.company_name.strip()] += 1
+        if lead.position and lead.position.strip():
+            titles[lead.position.strip()] += 1
+        if lead.location and lead.location.strip():
+            city = lead.location.split(",")[0].strip()
+            if city:
+                locations[city] += 1
+    return {
+        "top_companies": companies.most_common(8),
+        "top_titles": titles.most_common(8),
+        "top_locations": locations.most_common(6),
+    }
+
+
+# ── Sprint 2: Combined Channel Intelligence ────────────────────────────────────
+
+def _cross_match_keys(account_id: int):
+    """Return (hr_key_set, prospect_key_set) — normalised (name, company) tuples."""
+    hr_keys = set()
+    for hl in HeyReachLead.query.filter_by(account_id=account_id).all():
+        hr_keys.add((_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name)))
+    p_keys = set()
+    for p in Prospect.query.filter_by(account_id=account_id).all():
+        p_keys.add((_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or '')))
+    return hr_keys, p_keys
+
+
+def unified_funnel(account_id: int) -> List[Dict]:
+    """Single funnel aggregating both email and LinkedIn channels."""
+    camps    = Campaign.query.filter_by(account_id=account_id).all()
+    li_camps = HeyReachCampaign.query.filter_by(account_id=account_id).all()
+
+    # ── email ──
+    email_audience  = Prospect.query.filter_by(account_id=account_id).count()
+    # contacted_count is Instantly's own "unique leads contacted" per campaign
+    email_contacted = sum(c.contacted_count or 0 for c in camps)
+    email_opens     = sum(c.open_count_unique or 0 for c in camps)
+    email_replies   = sum(c.reply_count_unique or 0 for c in camps)
+    email_interest  = sum(c.total_interested or 0 for c in camps)
+    email_meetings  = sum(c.total_meeting_booked or 0 for c in camps)
+
+    # ── linkedin ──
+    li_q           = HeyReachLead.query.filter_by(account_id=account_id)
+    li_audience    = li_q.count()
+    # contacted = leads who actually started the sequence (not just queued)
+    li_contacted   = sum((c.leads_in_progress or 0) + (c.leads_finished or 0) + (c.leads_failed or 0) for c in li_camps)
+    li_interested  = li_q.filter_by(tag_interested=True).count()
+    li_generic     = li_q.filter_by(tag_generic=True).count()
+    li_not_int     = li_q.filter_by(tag_not_interested=True).count()
+    # any_response = all LinkedIn replies regardless of sentiment (the only engagement signal HeyReach gives us)
+    li_any_resp    = li_interested + li_generic + li_not_int
+    li_meetings    = (HeyReachLead.query.filter_by(account_id=account_id, li_stage='Meeting').count() +
+                      HeyReachLead.query.filter_by(account_id=account_id, li_stage='Won').count())
+
+    # ── deduplication ──
+    hr_keys, p_keys = _cross_match_keys(account_id)
+    cross = len(hr_keys & p_keys)
+
+    # ── combined stages ──
+    # Audience: unique people across both channels
+    audience   = email_audience + li_audience - cross
+    # Contacted: cap email side at email_audience (contacted_count can exceed unique prospects
+    # if the same person appears in multiple campaigns)
+    email_contacted = min(email_contacted, email_audience)
+    contacted  = email_contacted + li_contacted
+    # Engaged: email opens (intent signal) + any LinkedIn reply (only engagement signal available from HeyReach)
+    engaged    = email_opens + li_any_resp
+    # Responded: email replies + positive/neutral LinkedIn responses (excluding explicit not_interested)
+    responded  = email_replies + li_interested + li_generic
+    # Interested: clear positive intent on either channel
+    interested = email_interest + li_interested
+    # Meeting: booked across both
+    meeting    = email_meetings + li_meetings
+
+    base = max(audience, 1)
+    stages = [
+        ("Audience",   audience,   f"{email_audience:,} email, {li_audience:,} LinkedIn",          "#5b54f0"),
+        ("Contacted",  contacted,  f"{email_contacted:,} emailed, {li_contacted:,} LinkedIn",       "#7c75f3"),
+        ("Engaged",    engaged,    f"{email_opens:,} email opens, {li_any_resp:,} LinkedIn replies","#7c3aed"),
+        ("Responded",  responded,  f"{email_replies:,} email replies, {li_interested+li_generic:,} LinkedIn positive", "#0d9488"),
+        ("Interested", interested, f"{email_interest:,} email, {li_interested:,} LinkedIn",         "#0a8f5b"),
+        ("Meeting",    meeting,    f"{email_meetings:,} email, {li_meetings:,} LinkedIn",            "#e26a1b"),
+    ]
+    return [{"label": l, "value": v, "detail": d, "color": c,
+             "pct": round(v / base * 100, 1)} for l, v, d, c in stages]
+
+
+def channel_lift(account_id: int) -> Dict:
+    """Compare response rates: email-only vs LinkedIn-only vs both channels."""
+    hr_all  = HeyReachLead.query.filter_by(account_id=account_id).all()
+    p_all   = Prospect.query.filter_by(account_id=account_id).all()
+    if not hr_all or not p_all:
+        return {"has_data": False}
+
+    # Build lookup maps
+    hr_map: dict = {}
+    for hl in hr_all:
+        k = (_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name))
+        hr_map[k] = hl
+
+    p_map: dict = {}
+    for p in p_all:
+        k = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        p_map[k] = p
+
+    email_only_total = email_only_resp = 0
+    both_total       = both_resp       = 0
+
+    for p in p_all:
+        k = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        hl = hr_map.get(k)
+        responded = (p.email_reply_count or 0) > 0 or p.disposition == 'interested'
+        if hl:
+            both_total += 1
+            if responded or hl.tag_interested or hl.tag_generic:
+                both_resp += 1
+        else:
+            email_only_total += 1
+            if responded:
+                email_only_resp += 1
+
+    li_only_total = li_only_resp = 0
+    for hl in hr_all:
+        k = (_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name))
+        if k not in p_map:
+            li_only_total += 1
+            if hl.tag_interested or hl.tag_generic:
+                li_only_resp += 1
+
+    LIFT_MIN_SAMPLE = 20  # need at least this many cross-channel leads for a reliable rate
+    if both_total < LIFT_MIN_SAMPLE:
+        return {
+            "has_data": False,
+            "reason": "insufficient_data",
+            "both_total": both_total,
+            "needed": LIFT_MIN_SAMPLE,
+        }
+
+    er = _pct(email_only_resp, email_only_total)
+    lr = _pct(li_only_resp, li_only_total)
+    br = _pct(both_resp, both_total)
+    best_single = max(er, lr, 0.01)
+    lift = round(br / best_single, 1)
+
+    return {
+        "has_data":   True,
+        "email_only": {"total": email_only_total, "responded": email_only_resp, "rate": er},
+        "li_only":    {"total": li_only_total,    "responded": li_only_resp,    "rate": lr},
+        "both":       {"total": both_total,        "responded": both_resp,       "rate": br},
+        "lift":       lift,
+    }
+
+
+def gap_lists(account_id: int, limit: int = 25) -> Dict:
+    """
+    Two actionable lists:
+      email_warm_not_li  — warm email leads (opened 3+) not yet on LinkedIn
+      li_interested_not_email — LinkedIn interested leads never emailed
+    """
+    hr_all = HeyReachLead.query.filter_by(account_id=account_id).all()
+    p_all  = Prospect.query.filter_by(account_id=account_id).all()
+
+    hr_keys = {(_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name)) for hl in hr_all}
+    p_keys  = {(_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or '')) for p in p_all}
+
+    warm_not_li = [
+        p for p in p_all
+        if (p.warm_score or 0) >= WARM_THRESHOLD
+        and (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or '')) not in hr_keys
+    ]
+    warm_not_li.sort(key=lambda p: -(p.warm_score or 0))
+
+    li_int_not_email = [
+        hl for hl in hr_all
+        if hl.tag_interested
+        and (_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name)) not in p_keys
+    ]
+
+    return {
+        "email_warm_not_li":       warm_not_li[:limit],
+        "li_interested_not_email": li_int_not_email[:limit],
+    }
+
+
+def best_send_time(account_id: int) -> Dict:
+    """
+    Day-of-week and hour-of-day breakdown for email_opened events.
+    Returns counts used to render a heatmap.
+    """
+    DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    events = (Event.query
+              .filter_by(account_id=account_id, type='email_opened')
+              .filter(Event.occurred_at.isnot(None))
+              .all())
+
+    day_counts  = {d: 0 for d in DAYS}
+    hour_counts = {h: 0 for h in range(24)}
+    heatmap     = {d: {h: 0 for h in range(24)} for d in DAYS}
+
+    for e in events:
+        d = DAYS[e.occurred_at.weekday()]
+        h = e.occurred_at.hour
+        day_counts[d]  += 1
+        hour_counts[h] += 1
+        heatmap[d][h]  += 1
+
+    best_day  = max(day_counts,  key=day_counts.get)  if any(day_counts.values())  else None
+    best_hour = max(hour_counts, key=hour_counts.get) if any(hour_counts.values()) else None
+
+    return {
+        "days":        DAYS,
+        "day_counts":  day_counts,
+        "hour_counts": hour_counts,
+        "heatmap":     heatmap,
+        "best_day":    best_day,
+        "best_hour":   best_hour,
+        "total":       len(events),
+    }
+
+
+def company_heat_map(account_id: int, limit: int = 15) -> List[Dict]:
+    """
+    Roll up all engagement signals by company name.
+    Surfaces companies where multiple people are engaging across channels.
+    """
+    companies: dict = defaultdict(lambda: {
+        "display": "", "email_opens": 0, "email_replies": 0,
+        "li_interested": 0, "li_generic": 0, "people": set(),
+    })
+
+    for p in Prospect.query.filter_by(account_id=account_id).all():
+        co = _norm(p.company_name or p.company_domain or '')
+        if not co:
+            continue
+        d = companies[co]
+        if not d["display"]:
+            d["display"] = p.company_name or p.company_domain or co
+        d["email_opens"]   += p.email_open_count or 0
+        d["email_replies"] += p.email_reply_count or 0
+        d["people"].add(("email", (p.first_name or '') + ' ' + (p.last_name or '')))
+
+    for hl in HeyReachLead.query.filter_by(account_id=account_id).all():
+        co = _norm(hl.company_name or '')
+        if not co:
+            continue
+        d = companies[co]
+        if not d["display"]:
+            d["display"] = hl.company_name or co
+        if hl.tag_interested:
+            d["li_interested"] += 1
+        if hl.tag_generic:
+            d["li_generic"] += 1
+        d["people"].add(("li", hl.full_name))
+
+    results = []
+    for co_key, d in companies.items():
+        score = (d["email_opens"] * 1 + d["email_replies"] * 5 +
+                 d["li_interested"] * 8 + d["li_generic"] * 3 +
+                 len(d["people"]) * 2)
+        if score < 3:
+            continue
+        results.append({
+            "company":       d["display"],
+            "score":         score,
+            "email_opens":   d["email_opens"],
+            "email_replies": d["email_replies"],
+            "li_interested": d["li_interested"],
+            "li_generic":    d["li_generic"],
+            "people":        len(d["people"]),
+            "is_hot":        score >= 15,
+            "channels":      ("both" if d["email_opens"] + d["email_replies"] > 0 and d["li_interested"] + d["li_generic"] > 0
+                              else "email" if d["email_opens"] + d["email_replies"] > 0 else "linkedin"),
+        })
+
+    results.sort(key=lambda x: -x["score"])
+    return results[:limit]

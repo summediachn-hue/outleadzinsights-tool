@@ -43,7 +43,7 @@
   </div>
 </div>
 
-{# ── Funnel — funnel is a list of {label, value, color, pct_of_contacted} ── #}
+{# ── Funnel, funnel is a list of {label, value, color, pct_of_contacted} ── #}
 {% if funnel %}
 <div class="sec-head"><h2>Conversion Funnel</h2><span class="muted">{{ active_tf if active_tf != 'all' else 'All time' }}</span></div>
 <div class="table-wrap" style="padding:18px 20px 14px">
@@ -116,7 +116,7 @@
         {% for p in warm %}
         <tr>
           <td style="font-weight:500">{{ p.full_name }}</td>
-          <td class="muted" style="font-size:12.5px">{{ p.company_name or '—' }}</td>
+          <td class="muted" style="font-size:12.5px">{{ p.company_name or '' }}</td>
           <td><span class="badge accent">{{ p.email_open_count }}</span></td>
         </tr>
         {% endfor %}
@@ -137,7 +137,7 @@
         {% for p in interested %}
         <tr>
           <td style="font-weight:500">{{ p.full_name }}</td>
-          <td class="muted" style="font-size:12.5px">{{ p.company_name or '—' }}</td>
+          <td class="muted" style="font-size:12.5px">{{ p.company_name or '' }}</td>
           <td>
             {% if p.stage == 'Meeting' %}
               <span class="badge green">Meeting</span>

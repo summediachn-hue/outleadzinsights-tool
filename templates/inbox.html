@@ -14,7 +14,7 @@
     <div class="inbox-scroll">
       {% if not threads %}
       <div style="padding:32px 20px;text-align:center;color:var(--dim);font-size:13px">
-        No replies yet — click Sync Now to load.
+        No replies yet, click Sync Now to load.
       </div>
       {% endif %}
       {% for th in threads %}
@@ -190,7 +190,7 @@ function sendReply() {
     if (d.ok) document.getElementById('replyBody').value = '';
   }).catch(()=>{
     btn.disabled = false; btn.textContent = 'Send Reply';
-    st.className = 'send-status err'; st.textContent = 'Network error — try again.';
+    st.className = 'send-status err'; st.textContent = 'Network error, try again.';
   });
 }
 </script>

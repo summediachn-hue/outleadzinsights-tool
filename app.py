@@ -19,12 +19,15 @@ def generate_password_hash(pw):
 load_dotenv()
 
 from models import (
-    db, PIPELINE_STAGES, DISPOSITIONS, WARM_THRESHOLD, ROTTING_DAYS,
+    db, PIPELINE_STAGES, LI_PIPELINE_STAGES, DISPOSITIONS, WARM_THRESHOLD, ROTTING_DAYS,
     Campaign, CampaignStep, Prospect, Event, SendingAccount, Meta, EmailMessage,
     InstantlyAccount, AppUser, ClientToken, ClientActivity,
+    HeyReachAccount, HeyReachCampaign, HeyReachLead,
 )
 from instantly_client import InstantlyClient, InstantlyError
 from sync import run_sync
+from heyreach_client import HeyReachClient, HeyReachError
+from heyreach_sync import run_heyreach_sync
 import analytics as an
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -104,6 +107,53 @@ with app.app_context():
         "CREATE INDEX IF NOT EXISTS ix_prospects_account_id ON prospects(account_id)",
         "CREATE INDEX IF NOT EXISTS ix_events_account_id ON events(account_id)",
         "CREATE INDEX IF NOT EXISTS ix_sending_accounts_account_id ON sending_accounts(account_id)",
+        # HeyReach tables
+        ("CREATE TABLE IF NOT EXISTS heyreach_accounts ("
+         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+         "name VARCHAR(200) DEFAULT 'HeyReach',"
+         "api_key VARCHAR(500) NOT NULL,"
+         "account_id INTEGER NOT NULL,"
+         "is_active BOOLEAN DEFAULT 1,"
+         "created_at DATETIME,"
+         "synced_at DATETIME)"),
+        ("CREATE TABLE IF NOT EXISTS heyreach_campaigns ("
+         "id INTEGER PRIMARY KEY,"
+         "name VARCHAR(500) DEFAULT '',"
+         "status VARCHAR(50) DEFAULT '',"
+         "list_id INTEGER,"
+         "list_name VARCHAR(300) DEFAULT '',"
+         "total_leads INTEGER DEFAULT 0,"
+         "leads_in_progress INTEGER DEFAULT 0,"
+         "leads_finished INTEGER DEFAULT 0,"
+         "leads_failed INTEGER DEFAULT 0,"
+         "started_at DATETIME,"
+         "created_at DATETIME,"
+         "heyreach_account_id INTEGER,"
+         "account_id INTEGER NOT NULL,"
+         "synced_at DATETIME)"),
+        ("CREATE TABLE IF NOT EXISTS heyreach_leads ("
+         "id VARCHAR(100) PRIMARY KEY,"
+         "linkedin_id VARCHAR(100),"
+         "linkedin_url VARCHAR(500) DEFAULT '',"
+         "first_name VARCHAR(200) DEFAULT '',"
+         "last_name VARCHAR(200) DEFAULT '',"
+         "headline VARCHAR(500) DEFAULT '',"
+         "position VARCHAR(300) DEFAULT '',"
+         "company_name VARCHAR(300) DEFAULT '',"
+         "location VARCHAR(300) DEFAULT '',"
+         "email VARCHAR(255),"
+         "tag_interested BOOLEAN DEFAULT 0,"
+         "tag_not_interested BOOLEAN DEFAULT 0,"
+         "tag_generic BOOLEAN DEFAULT 0,"
+         "raw_tags TEXT DEFAULT '',"
+         "campaign_id INTEGER,"
+         "list_id INTEGER,"
+         "heyreach_account_id INTEGER,"
+         "account_id INTEGER NOT NULL,"
+         "synced_at DATETIME)"),
+        "CREATE INDEX IF NOT EXISTS ix_heyreach_leads_account_id ON heyreach_leads(account_id)",
+        "CREATE INDEX IF NOT EXISTS ix_heyreach_leads_campaign_id ON heyreach_leads(campaign_id)",
+        "CREATE INDEX IF NOT EXISTS ix_heyreach_campaigns_account_id ON heyreach_campaigns(account_id)",
     ]:
         try:
             db.session.execute(db.text(stmt))
@@ -155,6 +205,29 @@ def _client(account_id=None):
     return InstantlyClient(key) if key else None
 
 
+# ── Template globals ───────────────────────────────────────────────────────────
+
+@app.context_processor
+def inject_nav_context():
+    """Expose channel flags to every template — drives nav visibility and page guards."""
+    return {
+        "hr_nav": getattr(g, "hr_account", None),
+        "has_instantly": getattr(g, "has_instantly", True),
+        "has_heyreach": getattr(g, "has_heyreach", False),
+    }
+
+
+def _email_channel_required():
+    """Return a redirect if the active client has no Instantly key, else None."""
+    if not g.account_id:
+        return None  # superadmin — no restriction
+    if g.has_instantly:
+        return None  # all good
+    if g.has_heyreach:
+        return redirect(url_for("linkedin_leads"))
+    return redirect(url_for("dashboard"))
+
+
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
 def login_required(f):
@@ -183,6 +256,9 @@ def load_user():
     g.user = None
     g.account_id = None
     g.user_accounts = []
+    g.has_instantly = True   # safe default — superadmin / unauthenticated sees all
+    g.has_heyreach = False
+    g.hr_account = None
     uid = session.get('user_id')
     if uid:
         u = AppUser.query.get(uid)
@@ -191,7 +267,6 @@ def load_user():
             if u.role == 'superadmin':
                 g.user_accounts = InstantlyAccount.query.filter_by(is_active=True).all()
                 g.account_id = session.get('active_account_id')
-                # Default to first account if nothing selected yet
                 if not g.account_id and g.user_accounts:
                     g.account_id = g.user_accounts[0].id
                     session['active_account_id'] = g.account_id
@@ -201,13 +276,20 @@ def load_user():
                     .filter(InstantlyAccount.id.in_(allowed),
                             InstantlyAccount.is_active == True).all()
                     if allowed else [])
-                # Pick active account from session if allowed, else first
                 active = session.get('active_account_id')
                 if active and active in allowed:
                     g.account_id = active
                 elif g.user_accounts:
                     g.account_id = g.user_accounts[0].id
                     session['active_account_id'] = g.account_id
+            # Compute channel flags for the selected account
+            if g.account_id:
+                _acct = db.session.get(InstantlyAccount, g.account_id)
+                g.has_instantly = bool(_acct and _acct.api_key)
+                g.hr_account = HeyReachAccount.query.filter_by(
+                    account_id=g.account_id, is_active=True
+                ).first()
+                g.has_heyreach = g.hr_account is not None
         else:
             session.clear()
 
@@ -309,7 +391,9 @@ TIMEFRAMES = [("7", "Last 7 days"), ("30", "Last 30 days"),
 def dashboard():
     start, end, active = _parse_range(request.args)
     aid = g.account_id
+    hr_account = g.hr_account
     return render_template("dashboard.html",
+        has_instantly=g.has_instantly,
         metrics=an.dashboard_metrics(start, end, account_id=aid),
         life=an.lifetime_stats(account_id=aid),
         funnel=an.funnel(start, end, account_id=aid),
@@ -321,6 +405,12 @@ def dashboard():
         active_tf=active,
         start_str=request.args.get("start", ""),
         end_str=request.args.get("end", ""),
+        hr_account=hr_account,
+        hr_kpis=an.heyreach_kpis(aid) if hr_account and aid else None,
+        cross_leads=an.cross_channel_leads(aid, limit=20) if hr_account and aid else [],
+        uni_funnel=an.unified_funnel(aid) if aid else [],
+        gaps=an.gap_lists(aid) if aid else {"email_warm_not_li": [], "li_interested_not_email": []},
+        lift=an.channel_lift(aid) if (g.has_instantly and g.has_heyreach and aid) else None,
     )
 
 
@@ -378,13 +468,77 @@ def scripts():
 @app.route("/campaigns")
 @login_required
 def campaigns():
-    all_c = _cq().order_by(Campaign.emails_sent_count.desc()).all()
-    data = []
-    for c in all_c:
-        warm = (_pq().filter_by(campaign_id=c.id)
-                .filter(Prospect.email_open_count >= WARM_THRESHOLD).count())
-        data.append({"c": c, "diag": an.diagnose_campaign(c), "warm": warm})
-    return render_template("campaigns.html", data=data)
+    channel = request.args.get("ch", "all")  # all | email | linkedin
+    aid = g.account_id
+    has_instantly = g.has_instantly
+    hr_account = g.hr_account
+    email_data = []
+    if has_instantly and channel in ("all", "email"):
+        all_c = _cq().order_by(Campaign.emails_sent_count.desc()).all()
+        for c in all_c:
+            warm = (_pq().filter_by(campaign_id=c.id)
+                    .filter(Prospect.email_open_count >= WARM_THRESHOLD).count())
+            email_data.append({"c": c, "diag": an.diagnose_campaign(c), "warm": warm})
+    hr_campaigns = []
+    if channel in ("all", "linkedin") and aid:
+        hr_campaigns = an.heyreach_campaigns(aid)
+    return render_template("campaigns.html",
+        data=email_data,
+        hr_campaigns=hr_campaigns,
+        hr_account=hr_account,
+        has_instantly=has_instantly,
+        active_channel=channel,
+    )
+
+
+@app.route("/linkedin-leads")
+@login_required
+def linkedin_leads():
+    aid = g.account_id
+    hr_account = HeyReachAccount.query.filter_by(account_id=aid, is_active=True).first() if aid else None
+    if not hr_account:
+        flash("No HeyReach account connected. Add one in Admin → Clients.", "error")
+        return redirect(url_for("campaigns"))
+
+    campaign_id_raw = request.args.get("campaign", "")
+    campaign_id = int(campaign_id_raw) if campaign_id_raw.isdigit() else None
+    tag = request.args.get("tag", "all")
+    search = request.args.get("q", "").strip()
+
+    tag_filter = None if tag == "all" else tag
+    leads = an.linkedin_leads_filtered(aid, campaign_id=campaign_id, tag=tag_filter, search=search or None)
+    campaigns = an.heyreach_campaigns(aid)
+    campaign_map = {c.id: c.name for c in campaigns}
+    insights = an.linkedin_audience_insights(aid, campaign_id=campaign_id)
+    matched = an.linkedin_cross_match(aid, leads) if aid else {}
+
+    # Stats scoped to campaign filter if active
+    base_q = HeyReachLead.query.filter_by(account_id=aid)
+    if campaign_id:
+        base_q = base_q.filter(HeyReachLead.campaign_id == campaign_id)
+    total = base_q.count()
+    interested = base_q.filter(HeyReachLead.tag_interested == True).count()
+    not_interested = base_q.filter(HeyReachLead.tag_not_interested == True).count()
+    generic = base_q.filter(HeyReachLead.tag_generic == True).count()
+
+    return render_template("linkedin_leads.html",
+        hr_account=hr_account,
+        leads=leads,
+        campaigns=campaigns,
+        campaign_map=campaign_map,
+        matched=matched,
+        insights=insights,
+        active_campaign=campaign_id,
+        active_tag=tag,
+        search=search,
+        stats={
+            "total": total,
+            "interested": interested,
+            "not_interested": not_interested,
+            "generic": generic,
+            "untagged": max(0, total - interested - not_interested - generic),
+        },
+    )
 
 
 @app.route("/campaign/<cid>")
@@ -415,9 +569,25 @@ def campaign_detail(cid):
 
 # ── Deliverability ─────────────────────────────────────────────────────────────
 
+@app.route("/intelligence")
+@login_required
+def intelligence():
+    aid = g.account_id
+    return render_template("intelligence.html",
+        send_time=an.best_send_time(aid) if (g.has_instantly and aid) else None,
+        heat_map=an.company_heat_map(aid) if aid else [],
+        gaps=an.gap_lists(aid) if aid else {"email_warm_not_li": [], "li_interested_not_email": []},
+        lift=an.channel_lift(aid) if (g.has_instantly and g.has_heyreach and aid) else None,
+        uni_funnel=an.unified_funnel(aid) if aid else [],
+    )
+
+
 @app.route("/deliverability")
 @login_required
 def deliverability():
+    redir = _email_channel_required()
+    if redir:
+        return redir
     return render_template("deliverability.html",
         summary=an.deliverability_summary(account_id=g.account_id),
         campaigns=_cq().filter(Campaign.emails_sent_count > 0)
@@ -430,6 +600,9 @@ def deliverability():
 @app.route("/revenue")
 @login_required
 def revenue():
+    redir = _email_channel_required()
+    if redir:
+        return redir
     aid = g.account_id
     return render_template("revenue.html",
         rev=an.revenue_summary(account_id=aid),
@@ -443,6 +616,9 @@ def revenue():
 @app.route("/leads")
 @login_required
 def leads():
+    redir = _email_channel_required()
+    if redir:
+        return redir
     ftype = request.args.get("f", "all")
     cid = request.args.get("cid")
     q = _pq()
@@ -505,12 +681,44 @@ def lead_update(email):
 @app.route("/crm")
 @login_required
 def crm():
-    pipeline = {s: [] for s in PIPELINE_STAGES}
-    for p in _pq().order_by(Prospect.warm_score.desc()).all():
-        stage = p.stage if p.stage in PIPELINE_STAGES else "New"
-        pipeline[stage].append(p)
-    return render_template("crm.html", pipeline=pipeline, stages=PIPELINE_STAGES,
-                           now=datetime.utcnow())
+    active_tab = request.args.get("tab", "linkedin" if (g.has_heyreach and not g.has_instantly) else "email")
+
+    # Email pipeline
+    email_pipeline = {s: [] for s in PIPELINE_STAGES}
+    if g.has_instantly:
+        for p in _pq().order_by(Prospect.warm_score.desc()).all():
+            stage = p.stage if p.stage in PIPELINE_STAGES else "New"
+            email_pipeline[stage].append(p)
+
+    # LinkedIn pipeline
+    li_pipeline = {s: [] for s in LI_PIPELINE_STAGES}
+    if g.has_heyreach and g.account_id:
+        for lead in (HeyReachLead.query
+                     .filter_by(account_id=g.account_id)
+                     .order_by(HeyReachLead.li_stage_changed_at.desc().nullslast(),
+                               HeyReachLead.synced_at.desc())
+                     .all()):
+            stage = lead.li_stage if lead.li_stage in LI_PIPELINE_STAGES else "Contacted"
+            li_pipeline[stage].append(lead)
+
+    return render_template("crm.html",
+        pipeline=email_pipeline, stages=PIPELINE_STAGES,
+        li_pipeline=li_pipeline, li_stages=LI_PIPELINE_STAGES,
+        active_tab=active_tab,
+        now=datetime.utcnow())
+
+
+@app.route("/crm/linkedin/<lid>/stage", methods=["POST"])
+@login_required
+def li_crm_move(lid):
+    stage = request.form.get("stage", "")
+    if stage not in LI_PIPELINE_STAGES:
+        return ("Bad stage", 400)
+    lead = HeyReachLead.query.filter_by(id=lid, account_id=g.account_id).first_or_404()
+    lead.li_stage = stage
+    lead.li_stage_changed_at = datetime.utcnow()
+    db.session.commit()
+    return ("", 204)
 
 
 # ── Inbox ──────────────────────────────────────────────────────────────────────
@@ -653,6 +861,9 @@ def _action_queue():
 @app.route('/crm/queue')
 @login_required
 def crm_queue():
+    redir = _email_channel_required()
+    if redir:
+        return redir
     unanswered, wake, cold = _action_queue()
     total = len(unanswered) + len(wake) + len(cold)
     return render_template('crm_queue.html',
@@ -663,6 +874,9 @@ def crm_queue():
 @app.route("/inbox")
 @login_required
 def inbox():
+    redir = _email_channel_required()
+    if redir:
+        return redir
     threads = _inbox_threads()
     active_thread_id = request.args.get("t")
     active_thread = None
@@ -1021,9 +1235,16 @@ def admin():
     client_activity = (ClientActivity.query
                        .order_by(ClientActivity.created_at.desc())
                        .limit(50).all())
+    # Build per-client HeyReach mapping (prefer active record)
+    hr_by_account = {}
+    for h in HeyReachAccount.query.order_by(HeyReachAccount.is_active.desc(),
+                                             HeyReachAccount.created_at.asc()).all():
+        if h.account_id not in hr_by_account:
+            hr_by_account[h.account_id] = h
     tab = request.args.get("tab", "users")
     return render_template("admin.html", users=users, accounts=accounts,
                            tokens=tokens, client_activity=client_activity,
+                           hr_by_account=hr_by_account,
                            active_tab=tab)
 
 
@@ -1093,14 +1314,53 @@ def admin_user_reset(uid):
 def admin_account_add():
     name = request.form.get("name", "").strip()
     api_key = request.form.get("api_key", "").strip()
-    if not name or not api_key:
-        flash("Account name and API key are required.", "error")
-        return redirect(url_for("admin"))
-    acct = InstantlyAccount(name=name, api_key=api_key)
+    heyreach_key = request.form.get("heyreach_key", "").strip()
+    heyreach_name = request.form.get("heyreach_name", "HeyReach").strip()
+    if not name:
+        flash("Client name is required.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    if not api_key and not heyreach_key:
+        flash("At least one channel (Instantly or HeyReach) must be configured.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    acct = InstantlyAccount(name=name, api_key=api_key or "")
     db.session.add(acct)
+    db.session.flush()  # get acct.id before creating HeyReach
+    if heyreach_key:
+        try:
+            ok = HeyReachClient(heyreach_key).check_key()
+            if not ok:
+                db.session.rollback()
+                flash("HeyReach API key is invalid.", "error")
+                return redirect(url_for("admin", tab="clients"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Could not verify HeyReach key: {e}", "error")
+            return redirect(url_for("admin", tab="clients"))
+        hr = HeyReachAccount(name=heyreach_name or name, api_key=heyreach_key,
+                             account_id=acct.id)
+        db.session.add(hr)
     db.session.commit()
-    flash(f"Account '{name}' added. Sync it to pull data.", "success")
-    return redirect(url_for("admin"))
+    channels = []
+    if api_key:
+        channels.append("email (Instantly)")
+    if heyreach_key:
+        channels.append("LinkedIn (HeyReach)")
+    flash(f"Client '{name}' added with {' + '.join(channels)}. Sync to pull data.", "success")
+    return redirect(url_for("admin", tab="clients"))
+
+
+@app.route("/admin/clients/<int:cid>/add-instantly", methods=["POST"])
+@superadmin_required
+def admin_client_add_instantly(cid):
+    acct = InstantlyAccount.query.get_or_404(cid)
+    api_key = request.form.get("api_key", "").strip()
+    if not api_key:
+        flash("Instantly API key is required.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    acct.api_key = api_key
+    db.session.commit()
+    flash(f"Email (Instantly) connected for '{acct.name}'. Click Sync Email to pull data.", "success")
+    return redirect(url_for("admin", tab="clients"))
 
 
 @app.route("/admin/accounts/<int:aid>/toggle", methods=["POST"])
@@ -1110,7 +1370,7 @@ def admin_account_toggle(aid):
     acct.is_active = not acct.is_active
     db.session.commit()
     flash(f"Account {'activated' if acct.is_active else 'deactivated'}.", "success")
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin", tab="clients"))
 
 
 @app.route("/admin/accounts/<int:aid>/sync", methods=["POST"])
@@ -1127,7 +1387,59 @@ def admin_account_sync(aid):
         flash(f"Synced '{acct.name}': {s['campaigns']} campaigns, {s['leads']} leads.", "success")
     except Exception as e:
         flash(f"Sync failed: {e}", "error")
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin", tab="clients"))
+
+
+@app.route("/admin/heyreach/add", methods=["POST"])
+@superadmin_required
+def admin_heyreach_add():
+    name = request.form.get("name", "HeyReach").strip()
+    api_key = request.form.get("api_key", "").strip()
+    account_id = request.form.get("account_id", "").strip()
+    if not api_key or not account_id:
+        flash("API key and account are required.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    try:
+        account_id = int(account_id)
+    except ValueError:
+        flash("Invalid account.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    # Verify key
+    try:
+        ok = HeyReachClient(api_key).check_key()
+        if not ok:
+            flash("HeyReach API key is invalid.", "error")
+            return redirect(url_for("admin", tab="clients"))
+    except Exception as e:
+        flash(f"Could not verify HeyReach key: {e}", "error")
+        return redirect(url_for("admin", tab="clients"))
+    hr = HeyReachAccount(name=name, api_key=api_key, account_id=account_id)
+    db.session.add(hr)
+    db.session.commit()
+    flash(f"HeyReach account '{name}' added. Sync it to pull LinkedIn data.", "success")
+    return redirect(url_for("admin", tab="clients"))
+
+
+@app.route("/admin/heyreach/<int:hid>/sync", methods=["POST"])
+@superadmin_required
+def admin_heyreach_sync(hid):
+    hr = HeyReachAccount.query.get_or_404(hid)
+    try:
+        s = run_heyreach_sync(hr)
+        flash(f"HeyReach synced: {s['campaigns']} campaigns, {s['leads']} leads.", "success")
+    except Exception as e:
+        flash(f"HeyReach sync failed: {e}", "error")
+    return redirect(url_for("admin", tab="clients"))
+
+
+@app.route("/admin/heyreach/<int:hid>/toggle", methods=["POST"])
+@superadmin_required
+def admin_heyreach_toggle(hid):
+    hr = HeyReachAccount.query.get_or_404(hid)
+    hr.is_active = not hr.is_active
+    db.session.commit()
+    flash(f"HeyReach account {'activated' if hr.is_active else 'deactivated'}.", "success")
+    return redirect(url_for("admin", tab="clients"))
 
 
 @app.route("/switch-account", methods=["POST"])

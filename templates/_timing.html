@@ -1,4 +1,4 @@
-{# Timezone-aware engagement timing — heatmap matrix + insight headline.
+{# Timezone-aware engagement timing, heatmap matrix + insight headline.
    Expects `timing`; optional `timing_title`. #}
 {% macro heatmap(timing, grid, maxv, metric) -%}
 <div class="hm">
@@ -20,7 +20,7 @@
 <div class="table-wrap">
   <div class="table-header">
     <h2>When {{ timing_title or 'Your Emails' }} Get Engagement
-      <span class="info" data-tip="A heatmap of when prospects open and reply — darker means more activity. Shown in each campaign's own local timezone (read from Instantly). Use the hot cell to time sends and follow-ups.">i</span></h2>
+      <span class="info" data-tip="A heatmap of when prospects open and reply, darker means more activity. Shown in each campaign's own local timezone (read from Instantly). Use the hot cell to time sends and follow-ups.">i</span></h2>
     <span class="muted" style="font-size:12px">{{ timing.tz_label }}</span>
   </div>
   <div style="padding:20px 22px">

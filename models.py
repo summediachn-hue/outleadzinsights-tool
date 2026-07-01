@@ -22,6 +22,10 @@ PIPELINE_STAGES = [
     "Meeting", "Won", "Lost", "Nurture",
 ]
 
+LI_PIPELINE_STAGES = [
+    "Contacted", "Replied", "Interested", "Meeting", "Won", "Closed",
+]
+
 DISPOSITIONS = [
     "interested", "not_now", "not_interested",
     "wrong_person", "no_reply", "unsubscribed",
@@ -453,6 +457,109 @@ class ClientActivity(db.Model):
     value = db.Column(db.String(200), default="")
     note = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ── HeyReach (LinkedIn outreach) ──────────────────────────────────────────────
+
+class HeyReachAccount(db.Model):
+    __tablename__ = "heyreach_accounts"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), default="HeyReach")
+    api_key = db.Column(db.String(500), nullable=False)
+    account_id = db.Column(db.Integer, nullable=False, index=True)   # links to InstantlyAccount.id scope
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    synced_at = db.Column(db.DateTime, nullable=True)
+
+
+class HeyReachCampaign(db.Model):
+    __tablename__ = "heyreach_campaigns"
+    id = db.Column(db.Integer, primary_key=True)          # HeyReach campaign id
+    name = db.Column(db.String(500), default="")
+    status = db.Column(db.String(50), default="")         # ACTIVE|FINISHED|FAILED|PAUSED
+    list_id = db.Column(db.Integer, nullable=True, index=True)
+    list_name = db.Column(db.String(300), default="")
+    total_leads = db.Column(db.Integer, default=0)
+    leads_in_progress = db.Column(db.Integer, default=0)
+    leads_finished = db.Column(db.Integer, default=0)
+    leads_failed = db.Column(db.Integer, default=0)
+    started_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    heyreach_account_id = db.Column(db.Integer, db.ForeignKey("heyreach_accounts.id"), index=True)
+    account_id = db.Column(db.Integer, nullable=False, index=True)
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def status_label(self):
+        return {"ACTIVE": "Active", "FINISHED": "Finished",
+                "FAILED": "Failed", "PAUSED": "Paused"}.get(self.status, self.status)
+
+    @property
+    def interested_count(self):
+        return HeyReachLead.query.filter(
+            HeyReachLead.campaign_id == self.id,
+            HeyReachLead.tag_interested == True
+        ).count()
+
+    @property
+    def not_interested_count(self):
+        return HeyReachLead.query.filter(
+            HeyReachLead.campaign_id == self.id,
+            HeyReachLead.tag_not_interested == True
+        ).count()
+
+
+class HeyReachLead(db.Model):
+    __tablename__ = "heyreach_leads"
+    id = db.Column(db.String(100), primary_key=True)      # HeyReach lead id
+    linkedin_id = db.Column(db.String(100), nullable=True)
+    linkedin_url = db.Column(db.String(500), default="")
+    first_name = db.Column(db.String(200), default="")
+    last_name = db.Column(db.String(200), default="")
+    headline = db.Column(db.String(500), default="")
+    position = db.Column(db.String(300), default="")
+    company_name = db.Column(db.String(300), default="")
+    location = db.Column(db.String(300), default="")
+    email = db.Column(db.String(255), nullable=True)       # enriched when available
+
+    # Outcome tags from HeyReach
+    tag_interested = db.Column(db.Boolean, default=False)
+    tag_not_interested = db.Column(db.Boolean, default=False)
+    tag_generic = db.Column(db.Boolean, default=False)
+    raw_tags = db.Column(db.Text, default="")              # JSON list of tag names
+
+    # CRM pipeline stage (managed locally, independent of HeyReach tags)
+    li_stage = db.Column(db.String(50), nullable=True)
+    li_stage_changed_at = db.Column(db.DateTime, nullable=True)
+
+    # Campaign link (a lead can appear in multiple campaigns via list)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("heyreach_campaigns.id"), nullable=True, index=True)
+    list_id = db.Column(db.Integer, nullable=True, index=True)
+    heyreach_account_id = db.Column(db.Integer, db.ForeignKey("heyreach_accounts.id"), index=True)
+    account_id = db.Column(db.Integer, nullable=False, index=True)
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip() or "Unknown"
+
+    @property
+    def outcome_tag(self):
+        if self.tag_interested:
+            return "Interested"
+        if self.tag_not_interested:
+            return "Not Interested"
+        if self.tag_generic:
+            return "Generic"
+        return None
+
+    @property
+    def name_company_key(self):
+        """Normalised key for cross-channel matching."""
+        import re as _re
+        def _norm(s):
+            return _re.sub(r'[^a-z0-9]', '', (s or '').lower())
+        return (_norm(self.first_name) + _norm(self.last_name), _norm(self.company_name))
 
 
 # ── Meta (key/value: workspace name, last sync, etc.) ──────────────────────────

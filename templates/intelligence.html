@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Intelligence · Outleadz{% endblock %}
+{% block topbar %}Intelligence{% endblock %}
+{% block content %}
+<style>
+.int-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px}
+.int-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden}
+.int-card-full{background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:18px}
+.int-head{padding:13px 16px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
+.int-title{font-size:13px;font-weight:700}
+.int-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.int-body{padding:14px 16px}
+
+/* Unified funnel */
+.uni-row{display:flex;align-items:center;gap:12px;margin-bottom:3px}
+.uni-label{width:130px;font-size:12px;color:var(--muted);font-weight:500;text-align:right;flex-shrink:0}
+.uni-bar-wrap{flex:1;height:26px;background:var(--surface2);border-radius:6px;overflow:hidden}
+.uni-bar{height:100%;border-radius:6px;min-width:0;transition:width .5s}
+.uni-num{width:55px;text-align:right;font-size:12px;font-weight:700;flex-shrink:0}
+.uni-pct{width:42px;text-align:right;font-size:11px;color:var(--dim);flex-shrink:0}
+.uni-detail{padding-left:154px;font-size:10.5px;color:var(--dim);margin-bottom:8px}
+
+/* Heat map grid */
+.hm-wrap{overflow-x:auto}
+.hm-table{border-collapse:collapse;font-size:11px;width:100%}
+.hm-table th{padding:5px 6px;color:var(--muted);font-weight:600;text-align:center;font-size:10px}
+.hm-table td{padding:3px 4px;text-align:center}
+.hm-cell{width:26px;height:22px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:600;color:white}
+
+/* Day chart */
+.day-bar-row{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.day-label{width:28px;font-size:11px;color:var(--muted);font-weight:600;flex-shrink:0}
+.day-bar-wrap{flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.day-bar{height:100%;background:var(--accent);border-radius:4px;transition:width .4s}
+.day-count{width:28px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0}
+
+/* Company heat */
+.co-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2)}
+.co-row:last-child{border-bottom:none}
+.co-score{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+.co-info{flex:1;min-width:0}
+.co-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.co-signals{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap}
+.co-bar-wrap{width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;flex-shrink:0}
+.co-bar{height:100%;border-radius:3px}
+
+/* Gap lists */
+.gap-lead{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--surface2)}
+.gap-lead:last-child{border-bottom:none}
+.gap-avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0}
+.gap-info{flex:1;min-width:0}
+.gap-name{font-size:12.5px;font-weight:600}
+.gap-co{font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Lift */
+.lift-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2)}
+.lift-row:last-child{border-bottom:none}
+.lift-label{width:110px;font-size:12px;font-weight:500;flex-shrink:0}
+.lift-bar-wrap{flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.lift-bar-inner{height:100%;border-radius:4px}
+.lift-rate{width:50px;text-align:right;font-size:12px;font-weight:700;flex-shrink:0}
+</style>
+
+<div class="page-header">
+  <h1>Intelligence</h1>
+  <p>Patterns, timing, and gaps hiding in your outreach data.</p>
+</div>
+
+{# ── Unified Funnel ── #}
+{% if uni_funnel %}
+<div class="int-card-full">
+  <div class="int-head">
+    <div><div class="int-title">Unified Funnel</div><div class="int-sub">Both channels combined, one conversion picture</div></div>
+    {% if has_instantly and has_heyreach %}
+    <div style="display:flex;gap:5px">
+      <span class="badge accent" style="font-size:10px">Email</span>
+      <span class="badge" style="font-size:10px;background:#e8f0fe;color:#0077b5;font-weight:700">in LinkedIn</span>
+    </div>
+    {% endif %}
+  </div>
+  <div class="int-body">
+    {% set max_val = uni_funnel[0].value if uni_funnel and uni_funnel[0].value else 1 %}
+    {% for row in uni_funnel %}
+    <div class="uni-row">
+      <div class="uni-label">{{ row.label }}</div>
+      <div class="uni-bar-wrap">
+        <div class="uni-bar" style="width:{{ [((row.value/max_val*100)|int), 100]|min if max_val else 0 }}%;background:{{ row.color }};min-width:{% if row.value > 0 %}4px{% else %}0{% endif %}"></div>
+      </div>
+      <div class="uni-num">{{ '{:,}'.format(row.value) }}</div>
+      <div class="uni-pct">{{ row.pct }}%</div>
+    </div>
+    <div class="uni-detail">{{ row.detail }}</div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="int-grid">
+
+  {# ── Channel Lift ── #}
+  {% if lift %}
+  <div class="int-card">
+    <div class="int-head">
+      <div>
+        <div class="int-title">Channel Lift</div>
+        <div class="int-sub">Does hitting both channels get more responses?</div>
+      </div>
+      {% if lift.has_data and lift.lift > 1 %}
+      <div style="background:var(--green-bg);color:var(--green);font-size:14px;font-weight:800;padding:5px 10px;border-radius:8px">{{ lift.lift }}x</div>
+      {% endif %}
+    </div>
+    <div class="int-body">
+      {% if lift.has_data %}
+      {% set max_rate = [lift.email_only.rate, lift.li_only.rate, lift.both.rate]|max %}
+      {% set max_rate = max_rate if max_rate > 0 else 1 %}
+      <div class="lift-row">
+        <div class="lift-label" style="color:var(--accent)">Email only</div>
+        <div class="lift-bar-wrap"><div class="lift-bar-inner" style="width:{{ (lift.email_only.rate/max_rate*100)|int }}%;background:var(--accent)"></div></div>
+        <div class="lift-rate" style="color:var(--accent)">{{ lift.email_only.rate }}%</div>
+      </div>
+      <div class="lift-row">
+        <div class="lift-label" style="color:#0077b5">LinkedIn only</div>
+        <div class="lift-bar-wrap"><div class="lift-bar-inner" style="width:{{ (lift.li_only.rate/max_rate*100)|int }}%;background:#0077b5"></div></div>
+        <div class="lift-rate" style="color:#0077b5">{{ lift.li_only.rate }}%</div>
+      </div>
+      <div class="lift-row" style="background:var(--green-bg);margin:0 -16px;padding:9px 16px;border-radius:0">
+        <div class="lift-label" style="color:var(--green);font-weight:700">Both channels</div>
+        <div class="lift-bar-wrap"><div class="lift-bar-inner" style="width:{{ (lift.both.rate/max_rate*100)|int }}%;background:var(--green)"></div></div>
+        <div class="lift-rate" style="color:var(--green)">{{ lift.both.rate }}%</div>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--muted)">
+        Based on {{ lift.both.total }} cross-channel, {{ lift.email_only.total }} email-only, {{ lift.li_only.total }} LinkedIn-only leads
+      </div>
+      {% else %}
+      <div style="padding:20px 0;text-align:center;color:var(--muted)">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Not enough data yet</div>
+        <div style="font-size:12px">Need {{ lift.needed }} leads on both channels to calculate lift.<br>Currently {{ lift.both_total }} matched.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Best Send Time ── #}
+  {% if send_time and send_time.total > 0 %}
+  <div class="int-card">
+    <div class="int-head">
+      <div>
+        <div class="int-title">When Your Audience Opens Emails</div>
+        <div class="int-sub">Based on last-open timestamp of {{ send_time.total }} leads (UTC)</div>
+      </div>
+      {% if send_time.best_day %}
+      <div style="text-align:right;font-size:11px;color:var(--muted)">
+        Best day: <strong style="color:var(--accent)">{{ send_time.best_day }}</strong><br>
+        Peak hour: <strong style="color:var(--accent)">{{ send_time.best_hour }}:00 UTC</strong>
+      </div>
+      {% endif %}
+    </div>
+    <div class="int-body">
+      {% set max_day = send_time.day_counts.values()|max %}
+      {% for day in send_time.days %}
+      <div class="day-bar-row">
+        <div class="day-label">{{ day }}</div>
+        <div class="day-bar-wrap">
+          <div class="day-bar" style="width:{{ ((send_time.day_counts[day] / max_day * 100)|int) if max_day else 0 }}%;{{ 'opacity:.3' if send_time.day_counts[day]==0 else '' }}"></div>
+        </div>
+        <div class="day-count">{{ send_time.day_counts[day] }}</div>
+      </div>
+      {% endfor %}
+      <div style="margin-top:10px;font-size:11px;color:var(--dim)">Schedule sends for {{ send_time.best_day }}s to maximize open rate.</div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Gap Lists ── #}
+{% if gaps.email_warm_not_li or gaps.li_interested_not_email %}
+<div class="int-grid" style="margin-bottom:18px">
+
+  {% if gaps.email_warm_not_li %}
+  <div class="int-card">
+    <div class="int-head">
+      <div>
+        <div class="int-title" style="color:var(--accent)">{{ gaps.email_warm_not_li|length }} Warm Email Leads, Not on LinkedIn Yet</div>
+        <div class="int-sub">These people keep opening your emails but haven't been contacted on LinkedIn</div>
+      </div>
+    </div>
+    <div class="int-body" style="padding:8px 16px">
+      {% for p in gaps.email_warm_not_li[:12] %}
+      <div class="gap-lead">
+        <div class="gap-avatar" style="background:var(--accent)">{{ (p.first_name or '?')[0] }}</div>
+        <div class="gap-info">
+          <div class="gap-name">{{ p.full_name }}</div>
+          <div class="gap-co">{{ p.company_name or p.company_domain or '' }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <span class="badge orange" style="font-size:10px">{{ p.email_open_count }}× open</span>
+          {% if p.linkedin_url %}
+          <a href="{{ p.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">LinkedIn ↗</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if gaps.email_warm_not_li|length > 12 %}
+      <div style="font-size:11px;color:var(--muted);padding:8px 0">+{{ gaps.email_warm_not_li|length - 12 }} more</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if gaps.li_interested_not_email %}
+  <div class="int-card">
+    <div class="int-head">
+      <div>
+        <div class="int-title" style="color:var(--green)">{{ gaps.li_interested_not_email|length }} LinkedIn Interested, Never Emailed</div>
+        <div class="int-sub">These people replied interested on LinkedIn but you haven't emailed them</div>
+      </div>
+    </div>
+    <div class="int-body" style="padding:8px 16px">
+      {% for hl in gaps.li_interested_not_email[:12] %}
+      <div class="gap-lead">
+        <div class="gap-avatar" style="background:var(--green)">{{ (hl.first_name or '?')[0] }}</div>
+        <div class="gap-info">
+          <div class="gap-name">{{ hl.full_name }}</div>
+          <div class="gap-co">{{ hl.company_name or '' }}{% if hl.position %} · {{ hl.position }}{% endif %}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <span class="badge green" style="font-size:10px">Interested</span>
+          {% if hl.linkedin_url %}
+          <a href="{{ hl.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">Profile ↗</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+
+{# ── Company Heat Map ── #}
+{% if heat_map %}
+<div class="int-card-full">
+  <div class="int-head">
+    <div>
+      <div class="int-title">Company Heat Map</div>
+      <div class="int-sub">Companies with the strongest engagement across all channels</div>
+    </div>
+  </div>
+  <div class="int-body" style="padding:6px 16px">
+    {% set max_score = heat_map[0].score if heat_map else 1 %}
+    {% for co in heat_map %}
+    <div class="co-row">
+      <div class="co-score" style="{{ 'background:var(--red-bg);color:var(--red)' if co.is_hot else 'background:var(--surface2);color:var(--muted)' }}" title="{{ co.people }} contact{{ 's' if co.people != 1 }}">
+        {{ co.people }}
+      </div>
+      <div class="co-info">
+        <div class="co-name">
+          {{ co.company }}
+          {% if co.is_hot %}<span class="badge red" style="font-size:9.5px;margin-left:5px">Hot</span>{% endif %}
+        </div>
+        <div class="co-signals">
+          {% if co.email_opens > 0 %}<span class="badge gray" style="font-size:9.5px">{{ co.email_opens }} opens</span>{% endif %}
+          {% if co.email_replies > 0 %}<span class="badge accent" style="font-size:9.5px">{{ co.email_replies }} replies</span>{% endif %}
+          {% if co.li_interested > 0 %}<span class="badge green" style="font-size:9.5px">{{ co.li_interested }} LinkedIn interested</span>{% endif %}
+          {% if co.li_generic > 0 %}<span class="badge orange" style="font-size:9.5px">{{ co.li_generic }} LinkedIn generic</span>{% endif %}
+          <span class="badge gray" style="font-size:9.5px">{{ co.people }} contact{{ 's' if co.people != 1 }}</span>
+          {% if co.channels == 'both' %}<span class="badge" style="font-size:9.5px;background:var(--purple-bg);color:var(--purple)">multi-channel</span>{% endif %}
+        </div>
+      </div>
+      <div class="co-bar-wrap">
+        <div class="co-bar" style="width:{{ (co.score/max_score*100)|int }}%;background:{{ 'var(--red)' if co.is_hot else 'var(--accent)' }}"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not uni_funnel and not heat_map and not send_time %}
+<div class="table-wrap">
+  <div class="empty-state">No data yet, click <strong>Sync Now</strong> to pull your latest outreach data.</div>
+</div>
+{% endif %}
+
+{% endblock %}

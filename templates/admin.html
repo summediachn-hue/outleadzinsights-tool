@@ -38,7 +38,7 @@
 
 <div class="admin-tabs">
   <div class="admin-tab active" data-tab="users">Users <span class="badge blue" style="margin-left:6px">{{ users|length }}</span></div>
-  <div class="admin-tab" data-tab="accounts">Instantly Accounts <span class="badge blue" style="margin-left:6px">{{ accounts|length }}</span></div>
+  <div class="admin-tab" data-tab="clients">Clients <span class="badge blue" style="margin-left:6px">{{ accounts|length }}</span></div>
   <div class="admin-tab" data-tab="tokens">Client Links <span class="badge blue" style="margin-left:6px">{{ tokens|selectattr('is_active')|list|length }}</span></div>
 </div>
 
@@ -93,26 +93,62 @@
   </div>
 </div>
 
-<!-- ── Accounts panel ── -->
-<div class="admin-panel" id="tab-accounts">
+<!-- ── Clients panel ── -->
+<div class="admin-panel" id="tab-clients">
   <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
-    <button class="btn btn-primary btn-sm" onclick="openModal('addAccount')">+ Add Account</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('addClient')">+ Add Client</button>
   </div>
   <div class="table-wrap">
     <table>
-      <tr><th>Name</th><th>Workspace</th><th>API Key</th><th>Last Synced</th><th>Status</th><th>Actions</th></tr>
-      {% for a in accounts %}
       <tr>
-        <td><strong style="font-size:13px">{{ a.name }}</strong></td>
-        <td style="font-size:12.5px;color:var(--muted)">{{ a.workspace_name or '—' }}</td>
-        <td><span class="acct-key">{{ a.api_key[:8] }}…{{ a.api_key[-4:] }}</span></td>
-        <td style="font-size:12px;color:var(--dim)">{{ a.last_synced_at.strftime('%b %d, %H:%M') if a.last_synced_at else 'Never' }}</td>
-        <td><span class="badge {{ 'green' if a.is_active else 'gray' }}">{{ 'Active' if a.is_active else 'Inactive' }}</span></td>
+        <th>Client</th>
+        <th>Email <span style="font-weight:400;font-size:11px;color:var(--muted)">via Instantly</span></th>
+        <th>in LinkedIn <span style="font-weight:400;font-size:11px;color:var(--muted)">via HeyReach</span></th>
+        <th>Actions</th>
+      </tr>
+      {% for a in accounts %}
+      {% set hr = hr_by_account.get(a.id) %}
+      <tr>
         <td>
-          <div style="display:flex;gap:6px">
+          <strong style="font-size:13px">{{ a.name }}</strong>
+          {% if not a.is_active %}<span class="badge gray" style="margin-left:6px">Inactive</span>{% endif %}
+        </td>
+        <td>
+          {% if a.api_key %}
+            <span class="badge green" style="font-size:11px">Connected</span>
+            <div style="font-size:11px;color:var(--dim);margin-top:3px">
+              Synced {{ a.last_synced_at.strftime('%b %d, %H:%M') if a.last_synced_at else 'Never' }}
+            </div>
+          {% else %}
+            <span style="font-size:12px;color:var(--muted)">not connected</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if hr %}
+            <span class="badge green" style="font-size:11px">{{ 'Connected' if hr.is_active else 'Inactive' }}</span>
+            <div style="font-size:11px;color:var(--dim);margin-top:3px">
+              Synced {{ hr.synced_at.strftime('%b %d, %H:%M') if hr.synced_at else 'Never' }}
+            </div>
+          {% else %}
+            <span style="font-size:12px;color:var(--muted)">not connected</span>
+          {% endif %}
+        </td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            {% if a.api_key %}
             <form method="POST" action="{{ url_for('admin_account_sync', aid=a.id) }}" style="display:inline">
-              <button class="btn btn-primary btn-sm">Sync Now</button>
+              <button class="btn btn-primary btn-sm">Sync Email</button>
             </form>
+            {% else %}
+            <button class="btn btn-secondary btn-sm" onclick="openAddEmail({{ a.id }}, {{ a.name|tojson }})">+ Add Email</button>
+            {% endif %}
+            {% if hr %}
+            <form method="POST" action="{{ url_for('admin_heyreach_sync', hid=hr.id) }}" style="display:inline">
+              <button class="btn btn-secondary btn-sm">Sync LinkedIn</button>
+            </form>
+            {% else %}
+            <button class="btn btn-secondary btn-sm" onclick="openAddLinkedIn({{ a.id }}, {{ a.name|tojson }})">+ Add LinkedIn</button>
+            {% endif %}
             <form method="POST" action="{{ url_for('admin_account_toggle', aid=a.id) }}" style="display:inline">
               <button class="btn btn-secondary btn-sm">{{ 'Deactivate' if a.is_active else 'Activate' }}</button>
             </form>
@@ -180,7 +216,7 @@
   <div style="margin-top:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:11px">
     <p style="font-size:12.5px;color:var(--muted);line-height:1.6">
       <strong style="color:var(--text)">How it works:</strong>
-      Each link gives a client read-only access to their account's performance — metrics, funnel, campaigns, and leads.
+      Each link gives a client read-only access to their account's performance, metrics, funnel, campaigns, and leads.
       Recommendations, deliverability, and internal settings are never shown. Revoke any link instantly from this panel.
     </p>
   </div>
@@ -198,14 +234,14 @@
       {% for t in tokens %}{% if t.id == act.token_id %}{% set token_label = t.label %}{% endif %}{% endfor %}
       <tr>
         <td style="font-size:12px;color:var(--dim);white-space:nowrap">
-          {{ act.created_at.strftime('%b %d, %H:%M') if act.created_at else '—' }}
+          {{ act.created_at.strftime('%b %d, %H:%M') if act.created_at else '' }}
         </td>
         <td style="font-size:12.5px;color:var(--muted)">
           {{ acct_name or act.account_id }}
           {% if token_label %}<div style="font-size:11px;color:var(--dim)">{{ token_label }}</div>{% endif %}
         </td>
         <td style="font-size:12.5px">
-          {{ act.prospect_email or '—' }}
+          {{ act.prospect_email or '' }}
         </td>
         <td>
           {% if act.action == 'outcome_won' %}
@@ -221,13 +257,69 @@
           {% endif %}
         </td>
         <td style="font-size:12.5px;color:var(--muted);max-width:260px">
-          {{ act.note[:80] + '…' if act.note and act.note|length > 80 else (act.note or '—') }}
+          {{ act.note[:80] + '…' if act.note and act.note|length > 80 else (act.note or '') }}
         </td>
       </tr>
       {% endfor %}
     </table>
   </div>
   {% endif %}
+</div>
+
+<!-- ── Add Client modal ── -->
+<div class="modal-overlay" id="addClient">
+  <div class="modal" style="max-width:480px">
+    <h3>Add Client</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:-10px 0 18px">Configure one or both channels. You can add the other channel later.</p>
+    <form method="POST" action="{{ url_for('admin_account_add') }}">
+      <div class="form-row"><label>Client Name</label><input type="text" name="name" placeholder="e.g. Acme Corp" required></div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Email, via Instantly (optional)</div>
+        <div class="form-row" style="margin-bottom:0"><label>Instantly API Key</label><input type="text" name="api_key" placeholder="Leave blank if LinkedIn only" autocomplete="off"></div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">in LinkedIn, via HeyReach (optional)</div>
+        <div class="form-row"><label>HeyReach API Key</label><input type="text" name="heyreach_key" placeholder="Leave blank if email only" autocomplete="off"></div>
+        <div class="form-row" style="margin-bottom:0"><label>HeyReach Account Name</label><input type="text" name="heyreach_name" placeholder="e.g. Acme LinkedIn"></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addClient')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Client</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add Email modal (for LinkedIn-only clients) ── -->
+<div class="modal-overlay" id="addEmail">
+  <div class="modal">
+    <h3>Connect Email Outreach</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:-10px 0 18px">Adding Instantly to: <strong id="addEmailClientName"></strong></p>
+    <form method="POST" id="addEmailForm" action="">
+      <div class="form-row"><label>Instantly API Key</label><input type="text" name="api_key" placeholder="Instantly API key" required autocomplete="off"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addEmail')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Connect &amp; Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add LinkedIn modal (for email-only clients) ── -->
+<div class="modal-overlay" id="addLinkedIn">
+  <div class="modal">
+    <h3>Connect LinkedIn Outreach</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:-10px 0 18px">Adding HeyReach to: <strong id="addLinkedInClientName"></strong></p>
+    <form method="POST" action="{{ url_for('admin_heyreach_add') }}">
+      <input type="hidden" name="account_id" id="addLinkedInAccountId">
+      <div class="form-row"><label>HeyReach API Key</label><input type="text" name="api_key" placeholder="HeyReach API key" required autocomplete="off"></div>
+      <div class="form-row"><label>Account Label</label><input type="text" name="name" placeholder="e.g. Client LinkedIn"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addLinkedIn')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Connect &amp; Verify Key</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- ── Add User modal ── -->
@@ -249,7 +341,7 @@
         <label>Assign to Accounts <span style="font-weight:400;text-transform:none;letter-spacing:0">(hold ⌘/Ctrl to pick multiple)</span></label>
         <select name="account_ids" multiple style="height:auto;min-height:80px">
           {% for a in accounts %}{% if a.is_active %}
-          <option value="{{ a.id }}">{{ a.name }}{% if a.workspace_name %} — {{ a.workspace_name }}{% endif %}</option>
+          <option value="{{ a.id }}">{{ a.name }}{% if a.workspace_name %}, {{ a.workspace_name }}{% endif %}</option>
           {% endif %}{% endfor %}
         </select>
         <div style="font-size:11.5px;color:var(--dim);margin-top:5px">User can switch between assigned accounts from the topbar.</div>
@@ -262,34 +354,19 @@
   </div>
 </div>
 
-<!-- ── Add Account modal ── -->
-<div class="modal-overlay" id="addAccount">
-  <div class="modal">
-    <h3>Add Instantly Account</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Each account uses its own Instantly API key. After adding, click "Sync Now" to pull campaigns and leads.</p>
-    <form method="POST" action="{{ url_for('admin_account_add') }}">
-      <div class="form-row"><label>Account Name</label><input type="text" name="name" placeholder="e.g. Client A — Sales Outreach" required></div>
-      <div class="form-row"><label>Instantly API Key</label><input type="text" name="api_key" placeholder="Paste the V2 API key…" required autocomplete="off"></div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('addAccount')">Cancel</button>
-        <button type="submit" class="btn btn-primary">Add Account</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 <!-- ── Generate client link modal ── -->
 <div class="modal-overlay" id="addToken">
   <div class="modal">
     <h3>Generate Client Link</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Creates a read-only shareable URL for your client. No login required — anyone with the link can view the dashboard.</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Creates a read-only shareable URL for your client. No login required, anyone with the link can view the dashboard.</p>
     <form method="POST" id="addTokenForm">
       <div class="form-row">
         <label>Account</label>
         <select name="account_id" id="tokenAccountSelect" onchange="updateTokenAction()" required>
           {% for a in accounts %}{% if a.is_active %}
           <option value="{{ a.id }}" data-url="{{ url_for('admin_token_generate', aid=a.id) }}">
-            {{ a.name }}{% if a.workspace_name %} — {{ a.workspace_name }}{% endif %}
+            {{ a.name }}{% if a.workspace_name %}, {{ a.workspace_name }}{% endif %}
           </option>
           {% endif %}{% endfor %}
         </select>
@@ -325,9 +402,36 @@
   </div>
 </div>
 
+<!-- Sync loading overlay -->
+<div id="syncOverlay" style="display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:999;align-items:center;justify-content:center;backdrop-filter:blur(3px)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px 40px;text-align:center;box-shadow:0 20px 60px rgba(17,24,39,.2);min-width:280px">
+    <div id="syncSpinner" style="width:36px;height:36px;border:3px solid var(--surface2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 16px"></div>
+    <div id="syncOverlayTitle" style="font-size:15px;font-weight:700;margin-bottom:6px">Syncing...</div>
+    <div id="syncOverlayMsg" style="font-size:12.5px;color:var(--muted)">Fetching data from API. This takes 10-30 seconds.</div>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
 {% endblock %}
 {% block scripts %}
 <script>
+// Sync button loading state
+document.querySelectorAll('form[action*="/sync"]').forEach(function(form) {
+  form.addEventListener('submit', function(e) {
+    var btn = form.querySelector('button[type="submit"], button:not([type])') || form.querySelector('button');
+    var isEmail = form.action.includes('/sync') && !form.action.includes('heyreach');
+    var channel = form.action.includes('heyreach') ? 'LinkedIn' : 'Email';
+    // Find the client name from the row
+    var row = form.closest('tr');
+    var clientName = row ? (row.querySelector('strong') || {}).textContent || '' : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
+    var overlay = document.getElementById('syncOverlay');
+    document.getElementById('syncOverlayTitle').textContent = 'Syncing ' + channel + (clientName ? ' for ' + clientName.trim() : '') + '...';
+    document.getElementById('syncOverlayMsg').textContent = 'Pulling campaigns, leads and tags from ' + (channel === 'LinkedIn' ? 'HeyReach' : 'Instantly') + '. Usually takes 10-30 seconds.';
+    overlay.style.display = 'flex';
+  });
+});
+
 // Tabs
 document.querySelectorAll('.admin-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -359,11 +463,26 @@ function openReset(uid, email){
 }
 
 // Auto-open tab from query param
-{% if request.args.get('tab') == 'accounts' or active_tab == 'accounts' %}
-document.querySelector('[data-tab="accounts"]').click();
-{% elif request.args.get('tab') == 'tokens' or active_tab == 'tokens' %}
+{% set _tab = request.args.get('tab') or active_tab %}
+{% if _tab in ('clients','accounts','heyreach') %}
+document.querySelector('[data-tab="clients"]').click();
+{% elif _tab == 'tokens' %}
 document.querySelector('[data-tab="tokens"]').click();
 {% endif %}
+
+// Add Email channel to existing client
+function openAddEmail(cid, clientName) {
+  document.getElementById('addEmailForm').action = '/admin/clients/' + cid + '/add-instantly';
+  document.getElementById('addEmailClientName').textContent = clientName;
+  openModal('addEmail');
+}
+
+// Add LinkedIn channel to existing client
+function openAddLinkedIn(cid, clientName) {
+  document.getElementById('addLinkedInAccountId').value = cid;
+  document.getElementById('addLinkedInClientName').textContent = clientName;
+  openModal('addLinkedIn');
+}
 
 // Set generate-token form action from account dropdown
 function updateTokenAction(){

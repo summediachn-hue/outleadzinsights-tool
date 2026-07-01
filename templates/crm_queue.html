@@ -43,7 +43,7 @@
 <div class="page-header">
   <h1>Action queue</h1>
   <p>
-    {% if total == 0 %}All caught up — no actions needed today.
+    {% if total == 0 %}All caught up, no actions needed today.
     {% else %}{{ total }} lead{{ 's' if total != 1 else '' }} need{{ '' if total != 1 else 's' }} attention today.{% endif %}
   </p>
 </div>
@@ -72,9 +72,9 @@
     Needs response
     {% if unanswered %}<span class="badge red">{{ unanswered|length }}</span>{% endif %}
   </div>
-  <p class="section-sub">They replied to you — respond while intent is fresh.</p>
+  <p class="section-sub">They replied to you, respond while intent is fresh.</p>
 
-  {% if not unanswered %}<div class="empty-section">No unresponded replies — you're all caught up.</div>{% endif %}
+  {% if not unanswered %}<div class="empty-section">No unresponded replies, you're all caught up.</div>{% endif %}
 
   {% for item in unanswered %}
   {% set msg = item.msg %}{% set p = item.prospect %}{% set c = item.campaign %}
@@ -134,7 +134,7 @@
     Wake date today
     {% if wake %}<span class="badge yellow">{{ wake|length }}</span>{% endif %}
   </div>
-  <p class="section-sub">You parked these as "not now." Their time is up — reach back out.</p>
+  <p class="section-sub">You parked these as "not now." Their time is up, reach back out.</p>
 
   {% if not wake %}<div class="empty-section">No wake-date leads due today.</div>{% endif %}
 

@@ -239,7 +239,7 @@
     body.inbox-page .topbar{padding-left:28px;padding-right:28px;margin-bottom:0}
     body.inbox-page .flash-wrap{padding:0 28px}
 
-    /* ── Inbox two-panel layout (no margin hacks — main padding is zeroed above) ── */
+    /* ── Inbox two-panel layout (no margin hacks, main padding is zeroed above) ── */
     .inbox-layout{display:flex;height:calc(100vh - 53px);overflow:hidden;border-top:1px solid var(--border)}
     /* Left: thread list */
     .inbox-list{width:320px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface);overflow:hidden}
@@ -326,11 +326,21 @@
   <div class="nav-section">Analytics</div>
   <a href="{{ url_for('campaigns') }}" class="{{ 'active' if request.endpoint in ['campaigns','campaign_detail'] }}">
     <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg> Campaigns</a>
+  <a href="{{ url_for('intelligence') }}" class="{{ 'active' if request.endpoint=='intelligence' }}">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> Intelligence</a>
+  {% if has_instantly %}
   <a href="{{ url_for('deliverability') }}" class="{{ 'active' if request.endpoint=='deliverability' }}">
     <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg> Deliverability</a>
   <a href="{{ url_for('revenue') }}" class="{{ 'active' if request.endpoint=='revenue' }}">
     <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Revenue</a>
+  {% endif %}
   <div class="nav-section">Leads &amp; CRM</div>
+  {% if has_heyreach %}
+  <a href="{{ url_for('linkedin_leads') }}" class="{{ 'active' if request.endpoint=='linkedin_leads' }}">
+    <svg viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+    LinkedIn Leads</a>
+  {% endif %}
+  {% if has_instantly %}
   <a href="{{ url_for('inbox') }}" class="{{ 'active' if request.endpoint=='inbox' }}">
     <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> Inbox</a>
   <a href="{{ url_for('crm_queue') }}" class="{{ 'active' if request.endpoint=='crm_queue' }}">
@@ -339,6 +349,7 @@
     <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Leads</a>
   <a href="{{ url_for('leads') }}?f=hidden" class="{{ 'active' if request.endpoint=='leads' and request.args.get('f')=='hidden' }}">
     <svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> Hidden Intent</a>
+  {% endif %}
   <a href="{{ url_for('crm') }}" class="{{ 'active' if request.endpoint=='crm' }}">
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="18"/><rect x="10" y="3" width="5" height="12"/><rect x="17" y="3" width="4" height="8"/></svg> Pipeline</a>
   <div style="margin-top:auto"></div>

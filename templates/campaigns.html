@@ -6,7 +6,21 @@
   <p>Performance with automatic health diagnosis. Rates use unique counts.</p>
 </div>
 
-{% if data %}
+{# ── Channel filter tabs (only when both channels exist) ── #}
+{% if hr_account and has_instantly %}
+<div style="display:flex;gap:8px;margin-bottom:20px">
+  <a href="?ch=all"      class="btn {{ 'btn-primary' if active_channel=='all'      else 'btn-secondary' }}">All</a>
+  <a href="?ch=email"    class="btn {{ 'btn-primary' if active_channel=='email'    else 'btn-secondary' }}">Email (Instantly)</a>
+  <a href="?ch=linkedin" class="btn {{ 'btn-primary' if active_channel=='linkedin' else 'btn-secondary' }}">in LinkedIn (HeyReach)</a>
+</div>
+{% endif %}
+
+{% if has_instantly and data and active_channel != 'linkedin' %}
+{# ── Email campaign section header ── #}
+{% if hr_account %}<div class="sec-head"><h2>Email Campaigns</h2></div>{% endif %}
+{% endif %}
+
+{% if has_instantly and data %}
 <div class="table-wrap">
   <table>
     <tr>
@@ -41,7 +55,47 @@
     {% endfor %}
   </table>
 </div>
-{% else %}
-<div class="empty-state">No campaigns synced: click <strong>Sync Instantly</strong>.</div>
+{% elif has_instantly and active_channel != 'linkedin' %}
+<div class="empty-state">No email campaigns synced yet.</div>
 {% endif %}
+
+{# ── LinkedIn / HeyReach campaigns ── #}
+{% if hr_campaigns and active_channel != 'email' %}
+{% if hr_account %}<div class="sec-head" style="margin-top:{{ '28px' if data else '0' }}"><h2>LinkedIn Campaigns <span style="font-size:12px;font-weight:400;color:var(--muted)">via HeyReach</span></h2></div>{% endif %}
+<div class="table-wrap">
+  <table>
+    <tr>
+      <th>Campaign</th>
+      <th>Status</th>
+      <th>Total Leads</th>
+      <th>In Progress</th>
+      <th>Finished</th>
+      <th>Interested</th>
+      <th>Not Interested</th>
+      <th>List</th>
+    </tr>
+    {% for c in hr_campaigns %}
+    <tr>
+      <td><strong>{{ c.name }}</strong></td>
+      <td>
+        {% if c.status == 'ACTIVE' %}<span class="status"><span class="dot green"></span>Active</span>
+        {% elif c.status == 'FINISHED' %}<span class="status"><span class="dot gray"></span>Finished</span>
+        {% elif c.status == 'FAILED' %}<span class="status"><span class="dot red"></span>Failed</span>
+        {% elif c.status == 'PAUSED' %}<span class="status"><span class="dot yellow"></span>Paused</span>
+        {% else %}<span class="muted">{{ c.status }}</span>{% endif %}
+      </td>
+      <td><strong>{{ c.total_leads }}</strong></td>
+      <td class="muted">{{ c.leads_in_progress }}</td>
+      <td class="muted">{{ c.leads_finished }}</td>
+      <td class="{{ 'rate-good' if c.interested_count > 0 else 'muted' }}">{{ c.interested_count }}</td>
+      <td class="muted">{{ c.not_interested_count }}</td>
+      <td class="muted" style="font-size:12px">{{ c.list_name or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% elif active_channel == 'linkedin' %}
+<div class="empty-state">No LinkedIn campaigns synced yet. Add a HeyReach account in Admin → HeyReach.</div>
+{% endif %}
+
 {% endblock %}

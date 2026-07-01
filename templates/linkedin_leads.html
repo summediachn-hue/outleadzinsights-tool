@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn Leads · Outleadz{% endblock %}
+{% block topbar %}LinkedIn Leads · {{ hr_account.name }}{% endblock %}
+{% block content %}
+<style>
+.li-tag-interested{background:var(--green-bg,#f0fdf4);color:var(--green);border:1px solid #86efac;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;display:inline-block}
+.li-tag-generic{background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;display:inline-block}
+.li-tag-not{background:var(--red-bg,#fef2f2);color:var(--red);border:1px solid #fca5a5;font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;display:inline-block}
+.li-tag-none{background:var(--surface2);color:var(--muted);border:1px solid var(--border);font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;display:inline-block}
+.filter-pill{padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:.12s}
+.filter-pill:hover{border-color:var(--accent);color:var(--accent)}
+.filter-pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.insight-wrap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:28px}
+.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.insight-card-head{padding:12px 16px 8px;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)}
+.insight-row{display:flex;justify-content:space-between;align-items:center;padding:7px 16px;border-bottom:1px solid var(--surface2)}
+.insight-row:last-child{border-bottom:none}
+.insight-bar-wrap{flex:1;margin:0 10px;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.insight-bar{height:100%;background:var(--accent);border-radius:3px}
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+  <div>
+    <h1>LinkedIn Leads</h1>
+    <p>All leads from HeyReach campaigns. Matched to email prospects where names and companies align.</p>
+  </div>
+</div>
+
+{# ── Stats ── #}
+<div class="metric-grid">
+  <div class="metric">
+    <div class="m-label">Total Leads{% if active_campaign %} <span style="font-weight:400">(this campaign)</span>{% endif %}</div>
+    <div class="m-value">{{ '{:,}'.format(stats.total) }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Interested</div>
+    <div class="m-value" style="color:var(--green)">{{ stats.interested }}
+      <span class="m-count">{{ '%.1f'|format(stats.interested/stats.total*100) if stats.total else 0 }}%</span>
+    </div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Generic (responded)</div>
+    <div class="m-value" style="color:#ea580c">{{ stats.generic }}</div>
+  </div>
+  <div class="metric">
+    <div class="m-label">Not Interested</div>
+    <div class="m-value" style="color:var(--red)">{{ stats.not_interested }}</div>
+  </div>
+</div>
+
+{# ── Cross-channel callout ── #}
+{% if matched %}
+<div class="callout" style="margin:16px 0;background:var(--accent-bg);border:1px solid var(--accent);border-radius:10px;padding:10px 16px;font-size:13px">
+  <strong style="color:var(--accent)">{{ matched|length }} cross-channel leads</strong>
+  <span style="color:var(--muted)">, matched to email prospects in this account.</span>
+</div>
+{% endif %}
+
+{# ── Filters ── #}
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+
+  {# Campaign selector #}
+  <form method="get" action="{{ url_for('linkedin_leads') }}" style="display:contents">
+    <select name="campaign" onchange="this.form.submit()"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:7px 12px;color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;outline:none">
+      <option value="">All Campaigns</option>
+      {% for c in campaigns %}
+      <option value="{{ c.id }}" {{ 'selected' if active_campaign==c.id }}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="tag" value="{{ active_tag }}">
+    <input type="hidden" name="q" value="{{ search }}">
+  </form>
+
+  {# Tag pills #}
+  {% set _base = '?tag=%s' + ('&campaign='+active_campaign|string if active_campaign else '') + ('&q='+search if search else '') %}
+  <div style="display:flex;gap:5px;flex-wrap:wrap">
+    <a href="{{ _base % 'all' }}" class="filter-pill {{ 'active' if active_tag=='all' }}">All <span style="opacity:.65">{{ stats.total }}</span></a>
+    <a href="{{ _base % 'interested' }}" class="filter-pill {{ 'active' if active_tag=='interested' }}">Interested <span style="opacity:.65">{{ stats.interested }}</span></a>
+    <a href="{{ _base % 'generic' }}" class="filter-pill {{ 'active' if active_tag=='generic' }}">Generic <span style="opacity:.65">{{ stats.generic }}</span></a>
+    <a href="{{ _base % 'not_interested' }}" class="filter-pill {{ 'active' if active_tag=='not_interested' }}">Not Interested <span style="opacity:.65">{{ stats.not_interested }}</span></a>
+    <a href="{{ _base % 'untagged' }}" class="filter-pill {{ 'active' if active_tag=='untagged' }}">Untagged <span style="opacity:.65">{{ stats.untagged }}</span></a>
+  </div>
+
+  {# Search #}
+  <form method="get" action="{{ url_for('linkedin_leads') }}" style="display:flex;gap:6px;align-items:center;margin-left:auto">
+    {% if active_campaign %}<input type="hidden" name="campaign" value="{{ active_campaign }}">{% endif %}
+    <input type="hidden" name="tag" value="{{ active_tag }}">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search name, company, title…"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:7px 12px;color:var(--text);font-size:13px;font-family:inherit;width:220px;outline:none">
+    <button type="submit" class="btn btn-secondary btn-sm">Search</button>
+    {% if search %}
+    <a href="?tag={{ active_tag }}{{ '&campaign='+active_campaign|string if active_campaign else '' }}" class="btn btn-secondary btn-sm" style="color:var(--red)">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+{# ── Lead table ── #}
+{% if leads %}
+<div class="table-wrap">
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Company</th>
+      <th>Location</th>
+      <th>Campaign</th>
+      <th>Tag</th>
+      <th>Channels</th>
+      <th></th>
+    </tr>
+    {% for l in leads %}
+    {% set prospect = matched.get(l.id) %}
+    <tr>
+      <td style="max-width:220px">
+        <strong style="font-size:13px">{{ l.full_name }}</strong>
+        {% if l.headline %}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.headline }}</div>
+        {% endif %}
+      </td>
+      <td style="max-width:200px">
+        {% if l.company_name %}
+        <div style="font-size:13px;font-weight:500">{{ l.company_name }}</div>
+        {% endif %}
+        {% if l.position %}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.position }}</div>
+        {% endif %}
+        {% if not l.company_name and not l.position %}<span class="muted"></span>{% endif %}
+      </td>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+        {{ l.location.split(',')[0] if l.location else '' }}
+      </td>
+      <td style="font-size:12px;color:var(--muted);max-width:140px">
+        {% if l.campaign_id and campaign_map.get(l.campaign_id) %}
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">{{ campaign_map[l.campaign_id] }}</span>
+        {% else %}{% endif %}
+      </td>
+      <td>
+        {% if l.tag_interested %}<span class="li-tag-interested">Interested</span>
+        {% elif l.tag_not_interested %}<span class="li-tag-not">Not Interested</span>
+        {% elif l.tag_generic %}<span class="li-tag-generic">Generic</span>
+        {% else %}<span class="li-tag-none"></span>{% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        <span class="badge accent" style="font-size:10.5px">in LinkedIn</span>
+        {% if prospect %}
+        <span class="badge gray" style="font-size:10.5px;margin-left:3px" title="{{ prospect.email_open_count }} opens">Email</span>
+        {% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        {% if l.linkedin_url %}
+        <a href="{{ l.linkedin_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Profile ↗</a>
+        {% endif %}
+        {% if prospect %}
+        <a href="{{ url_for('lead_detail', email=prospect.email) }}" class="btn btn-secondary btn-sm" style="margin-left:4px">CRM</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+<div style="font-size:12px;color:var(--muted);margin:10px 0 0;text-align:right">
+  Showing {{ leads|length }}{% if leads|length == 500 %} (capped at 500, use filters to narrow){% else %} of {{ stats.total if active_tag=='all' and not search else leads|length }}{% endif %} leads
+</div>
+
+{% else %}
+<div class="table-wrap">
+  <div class="empty-state">
+    {% if search %}
+      No leads match "{{ search }}". <a href="?tag={{ active_tag }}{{ '&campaign='+active_campaign|string if active_campaign else '' }}">Clear search</a>
+    {% elif active_tag != 'all' %}
+      No leads with this tag yet.
+      <a href="?tag=all{{ '&campaign='+active_campaign|string if active_campaign else '' }}">See all leads</a>
+    {% elif active_campaign %}
+      No leads in this campaign yet. Try syncing in Admin → Clients.
+    {% else %}
+      No LinkedIn leads synced yet. Go to <a href="{{ url_for('admin', tab='clients') }}">Admin → Clients</a> and click <strong>Sync LinkedIn</strong>.
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Audience insights ── #}
+{% if insights.top_companies or insights.top_titles or insights.top_locations %}
+<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin:32px 0 12px">Audience breakdown{% if active_campaign %} · this campaign{% endif %}</div>
+<div class="insight-wrap">
+
+  {% if insights.top_companies %}
+  {% set _max_co = insights.top_companies[0][1] %}
+  <div class="insight-card">
+    <div class="insight-card-head">Top Companies</div>
+    {% for name, cnt in insights.top_companies %}
+    <div class="insight-row">
+      <span style="font-size:12px;color:var(--text);flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ name }}</span>
+      <div class="insight-bar-wrap"><div class="insight-bar" style="width:{{ (cnt/_max_co*100)|int }}%"></div></div>
+      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">{{ cnt }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if insights.top_titles %}
+  {% set _max_ti = insights.top_titles[0][1] %}
+  <div class="insight-card">
+    <div class="insight-card-head">Top Job Titles</div>
+    {% for title, cnt in insights.top_titles %}
+    <div class="insight-row">
+      <span style="font-size:12px;color:var(--text);flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ title }}</span>
+      <div class="insight-bar-wrap"><div class="insight-bar" style="width:{{ (cnt/_max_ti*100)|int }}%"></div></div>
+      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">{{ cnt }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if insights.top_locations %}
+  {% set _max_lo = insights.top_locations[0][1] %}
+  <div class="insight-card">
+    <div class="insight-card-head">Locations</div>
+    {% for loc, cnt in insights.top_locations %}
+    <div class="insight-row">
+      <span style="font-size:12px;color:var(--text);flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ loc }}</span>
+      <div class="insight-bar-wrap"><div class="insight-bar" style="width:{{ (cnt/_max_lo*100)|int }}%"></div></div>
+      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">{{ cnt }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+
+{% endblock %}
