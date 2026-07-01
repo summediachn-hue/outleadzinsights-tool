@@ -579,6 +579,8 @@ def intelligence():
         gaps=an.gap_lists(aid) if aid else {"email_warm_not_li": [], "li_interested_not_email": []},
         lift=an.channel_lift(aid) if (g.has_instantly and g.has_heyreach and aid) else None,
         uni_funnel=an.unified_funnel(aid) if aid else [],
+        icp=an.icp_learner(aid) if aid else None,
+        exhaustion=an.lead_exhaustion(aid) if aid else None,
     )
 
 
@@ -633,11 +635,31 @@ def leads():
         q = q.filter(Prospect.email_reply_count > 0)
     elif ftype == "interested":
         q = q.filter(Prospect.lt_interest_status == 1)
-    leads = q.order_by(Prospect.warm_score.desc()).limit(500).all()
+    leads_raw = q.all()
+    if g.account_id:
+        hr_map   = an._build_hr_map(g.account_id)
+        def _key(p):
+            return (an._norm(p.first_name or '') + an._norm(p.last_name or ''),
+                    an._norm(p.company_name or ''))
+        scored   = [(p, an.compute_lead_score(p, hr_map.get(_key(p)))) for p in leads_raw]
+        scored.sort(key=lambda x: -x[1])
+        leads    = [p for p, _ in scored[:500]]
+        scores   = {p.id: s for p, s in scored}
+        actions  = {}
+        for p in leads:
+            act = an._next_action(p, hr_map.get(_key(p)))
+            if act:
+                actions[p.id] = act
+    else:
+        leads_raw.sort(key=lambda p: -(p.warm_score or 0))
+        leads   = leads_raw[:500]
+        scores  = {}
+        actions = {}
     return render_template("leads.html",
         leads=leads, ftype=ftype, cid=cid,
         campaigns=_cq().order_by(Campaign.name).all(),
-        stages=PIPELINE_STAGES, dispositions=DISPOSITIONS)
+        stages=PIPELINE_STAGES, dispositions=DISPOSITIONS,
+        scores=scores, actions=actions, warm_threshold=WARM_THRESHOLD)
 
 
 @app.route("/lead/<path:email>")

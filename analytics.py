@@ -1301,6 +1301,232 @@ def best_send_time(account_id: int) -> Dict:
     }
 
 
+# ── Sprint 3: Lead Score, Next Best Action, ICP Learner, Lead Exhaustion ──────
+
+def _build_hr_map(account_id: int) -> dict:
+    """Build {(norm_name, norm_co): HeyReachLead} for cross-channel matching."""
+    hr_map = {}
+    for hl in HeyReachLead.query.filter_by(account_id=account_id).all():
+        k = (_norm(hl.first_name) + _norm(hl.last_name), _norm(hl.company_name))
+        hr_map[k] = hl
+    return hr_map
+
+
+def compute_lead_score(p: Prospect, hr_lead=None) -> int:
+    """
+    0-100 signal score: best intent tier x recency multiplier.
+    Uses only the strongest signal (no stacking) to prevent gaming by bot opens.
+    """
+    opens   = p.email_open_count or 0
+    replies = p.email_reply_count or 0
+    clicks  = p.email_click_count or 0
+    code    = p.lt_interest_status
+
+    # Intent tier: highest signal wins
+    if code in (2, 3):                               intent = 100  # meeting booked/completed
+    elif code == 1:                                  intent = 80   # Instantly Interested label
+    elif hr_lead and hr_lead.tag_interested:         intent = 70   # LinkedIn interested
+    elif replies > 0:                                intent = 50   # email replied
+    elif hr_lead and hr_lead.tag_generic:            intent = 35   # LinkedIn any reply
+    elif opens >= 3:                                 intent = 20   # warm (3+ opens)
+    elif clicks > 0:                                 intent = 15   # clicked link
+    elif opens >= 1:                                 intent = 8    # cold open
+    else:                                            intent = 0
+
+    if intent == 0:
+        return 0
+
+    # Recency: days since last meaningful activity
+    last = (p.timestamp_last_reply or p.timestamp_last_open
+            or p.timestamp_last_contact or p.last_activity_at)
+    days = (datetime.utcnow() - last).days if last else 999
+
+    if   days <= 3:   recency = 1.00
+    elif days <= 7:   recency = 0.95
+    elif days <= 14:  recency = 0.85
+    elif days <= 30:  recency = 0.70
+    elif days <= 60:  recency = 0.50
+    elif days <= 90:  recency = 0.35
+    else:             recency = 0.20
+
+    score = round(intent * recency)
+
+    if hr_lead:                            score = min(100, score + 8)   # cross-channel bonus
+    if hr_lead and hr_lead.tag_not_interested:  score = max(0, score - 20)  # negative signal
+
+    return min(100, max(0, score))
+
+
+def lead_scores(account_id: int) -> dict:
+    """Return {prospect_id: score} for all prospects. Two DB queries total."""
+    prospects = Prospect.query.filter_by(account_id=account_id).all()
+    hr_map    = _build_hr_map(account_id)
+    out = {}
+    for p in prospects:
+        k = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        out[p.id] = compute_lead_score(p, hr_map.get(k))
+    return out
+
+
+def _next_action(p: Prospect, hr_lead) -> Optional[Dict]:
+    """Single-lead deterministic next action. Returns {label, urgency} or None."""
+    now     = datetime.utcnow()
+    replies = p.email_reply_count or 0
+    opens   = p.email_open_count or 0
+    code    = p.lt_interest_status
+    is_on_li = hr_lead is not None
+
+    if p.stage in ("Won", "Lost"):       return None
+    if p.stage == "Meeting":             return None
+    if code in (2, 3):                   return None   # meeting booked/completed
+
+    # Reply going cold
+    if replies > 0 and p.timestamp_last_reply:
+        if (now - p.timestamp_last_reply).days >= 7:
+            return {"label": "Follow up in thread", "urgency": "high"}
+
+    # LinkedIn interested
+    if hr_lead and hr_lead.tag_interested:
+        if code == 1 or replies > 0:
+            return {"label": "Schedule call, interested on both", "urgency": "high"}
+        return {"label": "Interested on LinkedIn, move to meeting", "urgency": "high"}
+
+    # Email replied, not on LinkedIn yet
+    if replies > 0 and not is_on_li:
+        return {"label": "Connect on LinkedIn", "urgency": "medium"}
+
+    # 3+ opens, no reply, not on LinkedIn
+    if opens >= 3 and replies == 0 and not is_on_li:
+        return {"label": "Opening repeatedly, try LinkedIn", "urgency": "medium"}
+
+    # 3+ opens, no reply, already on LinkedIn
+    if opens >= 3 and replies == 0 and is_on_li:
+        return {"label": "Warm on both, send personal note", "urgency": "medium"}
+
+    # Nurture cooldown over
+    if p.stage == "Nurture" and p.wake_date and p.wake_date <= now.date():
+        return {"label": "Re-engage now", "urgency": "medium"}
+
+    # Sequence completed, no response at all
+    if p.instantly_status == 3 and replies == 0 and not (code and code > 0):
+        if not is_on_li:
+            return {"label": "Sequence done, try LinkedIn", "urgency": "low"}
+        if hr_lead and not hr_lead.tag_interested and not hr_lead.tag_generic:
+            return {"label": "No response on either channel", "urgency": "low"}
+
+    return None
+
+
+def next_best_actions(account_id: int) -> dict:
+    """Return {prospect_id: {label, urgency}} for all leads with an action."""
+    prospects = Prospect.query.filter_by(account_id=account_id).all()
+    hr_map    = _build_hr_map(account_id)
+    out = {}
+    for p in prospects:
+        k = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        action = _next_action(p, hr_map.get(k))
+        if action:
+            out[p.id] = action
+    return out
+
+
+def icp_learner(account_id: int) -> Dict:
+    """
+    Response rates by job title (email) and position (LinkedIn).
+    Uses rates not raw counts so large title groups don't dominate.
+    Only includes titles with 5+ contacts for statistical stability.
+    """
+    prospects = Prospect.query.filter_by(account_id=account_id).all()
+    hr_leads  = HeyReachLead.query.filter_by(account_id=account_id).all()
+
+    # Email: title → {total, responded}
+    etitles: dict = defaultdict(lambda: {"total": 0, "responded": 0})
+    for p in prospects:
+        t = (p.job_title or '').strip()
+        if len(t) < 2:
+            continue
+        etitles[t]["total"] += 1
+        if (p.email_reply_count or 0) > 0 or (p.lt_interest_status or 0) >= 1:
+            etitles[t]["responded"] += 1
+
+    # LinkedIn: position → {total, responded}
+    lpos: dict = defaultdict(lambda: {"total": 0, "responded": 0})
+    for hl in hr_leads:
+        pos = (hl.position or '').strip()
+        if len(pos) < 2:
+            continue
+        lpos[pos]["total"] += 1
+        if hl.tag_interested or hl.tag_generic:
+            lpos[pos]["responded"] += 1
+
+    MIN = 5  # minimum contacts to include a title
+
+    def _rows(stats):
+        rows = []
+        for title, d in stats.items():
+            if d["total"] < MIN:
+                continue
+            rows.append({"title": title[:50], "total": d["total"],
+                         "responded": d["responded"],
+                         "rate": _pct(d["responded"], d["total"])})
+        rows.sort(key=lambda x: (-x["responded"], -x["rate"]))
+        return rows[:10]
+
+    email_rows = _rows(etitles)
+    li_rows    = _rows(lpos)
+
+    total_e_resp  = sum(1 for p  in prospects if (p.email_reply_count or 0) > 0 or (p.lt_interest_status or 0) >= 1)
+    total_li_resp = sum(1 for hl in hr_leads  if hl.tag_interested or hl.tag_generic)
+
+    return {
+        "has_data":      bool(email_rows or li_rows),
+        "email_titles":  email_rows,
+        "li_positions":  li_rows,
+        "email_total":   len(prospects),
+        "email_responded": total_e_resp,
+        "li_total":      len(hr_leads),
+        "li_responded":  total_li_resp,
+        "sample_warning": total_e_resp < 20,
+    }
+
+
+def lead_exhaustion(account_id: int) -> Dict:
+    """
+    Prospects who completed the email sequence with no reply and no interest signal.
+    Splits into: try_linkedin (not on LI), ghosts (3+ opens, no reply), dead_ends (both channels, nothing).
+    """
+    hr_map = _build_hr_map(account_id)
+
+    exhausted = (Prospect.query.filter_by(account_id=account_id)
+                 .filter(Prospect.instantly_status == 3,
+                         Prospect.email_reply_count == 0,
+                         db.or_(Prospect.lt_interest_status.is_(None),
+                                Prospect.lt_interest_status <= 0))
+                 .filter(~Prospect.stage.in_(["Won", "Meeting", "Lost"]))
+                 .all())
+
+    try_linkedin, ghosts, dead_ends = [], [], []
+    for p in exhausted:
+        k   = (_norm(p.first_name or '') + _norm(p.last_name or ''), _norm(p.company_name or ''))
+        hr  = hr_map.get(k)
+        if (p.email_open_count or 0) >= 3:
+            ghosts.append({"prospect": p, "hr_lead": hr})
+        elif hr is None:
+            try_linkedin.append({"prospect": p})
+        else:
+            dead_ends.append({"prospect": p, "hr_lead": hr})
+
+    return {
+        "total":          len(exhausted),
+        "try_linkedin":   try_linkedin[:25],
+        "ghosts":         ghosts[:15],
+        "dead_ends":      dead_ends[:20],
+        "try_li_count":   len(try_linkedin),
+        "ghost_count":    len(ghosts),
+        "dead_end_count": len(dead_ends),
+    }
+
+
 def company_heat_map(account_id: int, limit: int = 15) -> List[Dict]:
     """
     Roll up all engagement signals by company name.
