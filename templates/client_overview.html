@@ -1,101 +1,368 @@
 {% extends "client_base.html" %}
 {% block title %}{{ acct.workspace_name or acct.name }} · Overview · Outleadz{% endblock %}
 {% block content %}
+<style>
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-sm)}
+.stat-card .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.55px;color:var(--muted);font-weight:600}
+.stat-card .value{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-top:6px;line-height:1}
+.stat-card .delta{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:600;margin-top:5px}
+.stat-card .sub{font-size:11.5px;color:var(--dim);margin-top:4px}
+.delta-up{color:var(--green)} .delta-down{color:var(--red)} .delta-flat{color:var(--dim)}
+.v-accent{color:var(--accent)} .v-green{color:var(--green)}
 
-{# ── Date range selector ── #}
-<div style="display:flex;justify-content:flex-end;margin-bottom:22px;gap:8px;flex-wrap:wrap">
+.pipeline-row{display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr;gap:12px;margin-bottom:24px}
+.pipeline-box{display:block;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+              padding:16px 18px;text-decoration:none;transition:.14s;box-shadow:var(--shadow-sm)}
+.pipeline-box:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(17,24,39,.09)}
+.pb-num{font-size:30px;font-weight:800;letter-spacing:-.8px;line-height:1;margin-top:6px}
+.pb-label{font-size:12px;font-weight:600;margin-top:5px}
+.pb-sub{font-size:11px;color:var(--dim);margin-top:2px}
+.pb-meeting .pb-num{color:#0066aa} .pb-interested .pb-num{color:var(--green)} .pb-won .pb-num{color:var(--accent)}
+
+.forecast-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+               padding:16px 18px;box-shadow:var(--shadow-sm)}
+.forecast-num{font-size:26px;font-weight:800;color:var(--green);letter-spacing:-.5px;line-height:1;margin-top:4px}
+.forecast-note{font-size:11px;color:var(--dim);margin-top:4px}
+.forecast-tag{display:inline-block;background:#e7f6ef;color:var(--green);font-size:11px;font-weight:600;
+              border-radius:6px;padding:3px 8px;margin-top:8px}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.two-col-wide{display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:24px}
+.section-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm)}
+.section-head{padding:13px 18px 11px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.section-head h3{font-size:13.5px;font-weight:700}
+.section-head .hint{font-size:11.5px;color:var(--dim)}
+.section-body{padding:14px 18px}
+
+/* Activity feed */
+.feed-item{display:flex;align-items:flex-start;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border)}
+.feed-item:last-child{border-bottom:none}
+.feed-icon{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-size:13px}
+.fi-won{background:#e7f6ef;color:var(--green)}
+.fi-meeting{background:#e7f6ef;color:var(--green)}
+.fi-interested{background:#f0f2ff;color:var(--accent)}
+.fi-reply{background:#f0f2ff;color:var(--accent)}
+.feed-text{flex:1;min-width:0}
+.feed-label{font-size:13px;font-weight:600;color:var(--text)}
+.feed-sub{font-size:11.5px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-time{font-size:11px;color:var(--dim);flex-shrink:0;padding-top:2px}
+
+/* Funnel */
+.funnel-row2{display:grid;grid-template-columns:85px 1fr 50px;align-items:center;gap:10px;margin-bottom:4px}
+.funnel-label2{font-size:11.5px;color:var(--muted);text-align:right;font-weight:500}
+.funnel-track{height:22px;background:var(--surface2);border-radius:5px;overflow:hidden}
+.funnel-fill{height:100%;border-radius:5px;display:flex;align-items:center;padding:0 9px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap}
+.funnel-count2{font-size:12px;color:var(--dim);text-align:right;font-weight:600}
+.funnel-conv{font-size:10.5px;color:var(--dim);padding-left:95px;margin-bottom:5px;margin-top:-1px;display:flex;align-items:center;gap:4px}
+.funnel-conv-good{color:var(--green);font-weight:600}
+.funnel-detail2{font-size:10px;color:var(--dim);padding-left:95px;margin-bottom:5px;margin-top:-3px}
+
+/* Sparkline */
+.spark-wrap{display:flex;align-items:flex-end;gap:2px;height:52px;padding:0 2px}
+.spark-bar{flex:1;border-radius:2px 2px 0 0;min-width:3px;min-height:2px}
+
+/* Top leads */
+.lead-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--surface2)}
+.lead-row:last-child{border-bottom:none}
+.lead-score{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+.lead-info{flex:1;min-width:0}
+.lead-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lead-meta{font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score-hot{background:#fce8e8;color:#c0211a}
+.score-warm{background:#fff3e0;color:#c05c00}
+.score-cool{background:#f0f2ff;color:var(--accent)}
+
+.rate-good{color:var(--green);font-weight:600}
+.rate-warn{color:#b7791f;font-weight:600}
+.rate-bad{color:var(--red);font-weight:600}
+</style>
+
+<form class="tf-bar" method="get" action="{{ url_for('client_overview', token_str=ct.token) }}">
+  <span class="tf-label">Activity period:</span>
   {% for val, label in timeframes %}
-  <a href="?days={{ val }}"
-     style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;
-            border:1px solid var(--border);transition:.12s;
-            {{ 'background:var(--accent);color:#fff;border-color:var(--accent)' if active_tf==val else 'background:var(--surface);color:var(--muted)' }}">
-    {{ label }}
-  </a>
+  <a href="{{ url_for('client_overview', token_str=ct.token) }}?days={{ val }}" class="tf-pill {{ 'active' if active_tf == val }}">{{ label }}</a>
   {% endfor %}
-</div>
+  <a href="#" class="tf-pill {{ 'active' if active_tf == 'custom' }}" id="coCustomToggle">Custom range</a>
+  <span class="daterange {{ 'show' if active_tf == 'custom' }}" id="coDateRange">
+    <input type="date" name="start" value="{{ start_str }}" aria-label="Start date">
+    <span style="font-size:12px;color:var(--muted)">to</span>
+    <input type="date" name="end" value="{{ end_str }}" aria-label="End date">
+    <button type="submit" class="btn-sm-primary">Apply</button>
+  </span>
+</form>
 
-{# ── KPI cards ── #}
-<div class="cards">
-  <div class="card">
+{# ── KPI Stats with week-over-week deltas ── #}
+<div class="stats-grid">
+
+  <div class="stat-card">
     <div class="label">Emails Sent</div>
-    <div class="value">{{ life.sent|default(0)|int }}</div>
+    <div class="value">{{ '{:,}'.format(life.sent) }}</div>
     <div class="sub">all time</div>
   </div>
-  <div class="card">
+
+  <div class="stat-card">
     <div class="label">Open Rate</div>
-    <div class="value {{ 'accent' if life.open_rate >= 25 else '' }}">{{ life.open_rate|default(0) }}%</div>
-    <div class="sub">{{ life.opens|default(0)|int }} unique opens</div>
+    <div class="value {{ 'v-green' if life.open_rate >= 25 else 'v-accent' if life.open_rate >= 15 else '' }}">{{ life.open_rate }}%</div>
+    {% if wk and wk.opens %}
+    {% set od = wk.opens.delta %}
+    <div class="delta {{ 'delta-up' if od > 0 else 'delta-down' if od < 0 else 'delta-flat' }}">
+      {% if od > 0 %}+{% endif %}{{ od }} opens this week
+    </div>
+    {% else %}
+    <div class="sub">{{ life.opens }} unique opens</div>
+    {% endif %}
   </div>
-  <div class="card">
+
+  <div class="stat-card">
     <div class="label">Reply Rate</div>
-    <div class="value {{ 'green' if life.reply_rate >= 3 else '' }}">{{ life.reply_rate|default(0) }}%</div>
-    <div class="sub">{{ life.replies|default(0)|int }} unique replies</div>
+    <div class="value {{ 'v-green' if life.reply_rate >= 4 else '' }}">{{ life.reply_rate }}%</div>
+    {% if wk and wk.replies %}
+    {% set rd = wk.replies.delta %}
+    <div class="delta {{ 'delta-up' if rd > 0 else 'delta-down' if rd < 0 else 'delta-flat' }}">
+      {% if rd > 0 %}+{% endif %}{{ rd }} replies this week
+    </div>
+    {% else %}
+    <div class="sub">{{ life.replies }} total replies</div>
+    {% endif %}
   </div>
-  <div class="card">
+
+  <div class="stat-card">
     <div class="label">Interested</div>
-    <div class="value">{{ life.interested|default(0)|int }}</div>
+    <div class="value v-green">{{ life.interested }}</div>
+    {% if wk and wk.interested %}
+    {% set id = wk.interested.delta %}
+    <div class="delta {{ 'delta-up' if id > 0 else 'delta-flat' }}">
+      {% if id > 0 %}+{{ id }} this week{% else %}{{ wk.interested.this }} active{% endif %}
+    </div>
+    {% else %}
     <div class="sub">positive responses</div>
+    {% endif %}
   </div>
-  <div class="card">
-    <div class="label">Meetings</div>
-    <div class="value green">{{ life.meetings|default(0)|int }}</div>
-    <div class="sub">booked</div>
+
+  <div class="stat-card">
+    <div class="label">Meetings Booked</div>
+    <div class="value v-green">{{ life.meetings }}</div>
+    {% if wk and wk.meetings %}
+    {% set md = wk.meetings.delta %}
+    <div class="delta {{ 'delta-up' if md > 0 else 'delta-flat' }}">
+      {% if md > 0 %}+{{ md }} this week{% else %}{{ wk.meetings.this }} in progress{% endif %}
+    </div>
+    {% else %}
+    <div class="sub">from outreach</div>
+    {% endif %}
   </div>
+
+  {% if has_li and li_kpis %}
+  <div class="stat-card">
+    <div class="label">LinkedIn Contacted</div>
+    <div class="value" style="color:#0077b5">{{ '{:,}'.format(li_kpis.total_sent) }}</div>
+    <div class="sub">{{ li_kpis.interested }} interested ({{ li_kpis.interest_rate }}%)</div>
+  </div>
+  {% endif %}
+
 </div>
 
-{# ── Funnel, funnel is a list of {label, value, color, pct_of_contacted} ── #}
-{% if funnel %}
-<div class="sec-head"><h2>Conversion Funnel</h2><span class="muted">{{ active_tf if active_tf != 'all' else 'All time' }}</span></div>
-<div class="table-wrap" style="padding:18px 20px 14px">
-  {% set max_val = funnel[0].value if funnel else 1 %}
-  {% for stage in funnel %}
-  {% set pct = [(stage.value / max_val * 100)|round(0)|int, 1]|max if max_val else 1 %}
-  <div class="funnel-row">
-    <div class="funnel-label">{{ stage.label }}</div>
-    <div class="funnel-bar-track">
-      <div class="funnel-bar-fill" style="width:{{ pct }}%;background:{{ stage.color }}">
-        {{ stage.value }}
+{# ── Pipeline + Forecast ── #}
+<div class="pipeline-row">
+  <a href="{{ url_for('client_leads', token_str=ct.token, f='meeting') }}" class="pipeline-box pb-meeting">
+    <div class="label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600">In meeting</div>
+    <div class="pb-num">{{ pipeline.meeting }}</div>
+    <div class="pb-sub">Booked conversations</div>
+  </a>
+  <a href="{{ url_for('client_leads', token_str=ct.token, f='interested') }}" class="pipeline-box pb-interested">
+    <div class="label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600">Interested</div>
+    <div class="pb-num">{{ pipeline.interested }}</div>
+    <div class="pb-sub">Need follow-up</div>
+  </a>
+  <a href="{{ url_for('client_leads', token_str=ct.token, f='won') }}" class="pipeline-box pb-won">
+    <div class="label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600">Won</div>
+    <div class="pb-num">{{ pipeline.won }}</div>
+    <div class="pb-sub">Closed deals</div>
+  </a>
+
+  {# Forecast card #}
+  {% if forecast %}
+  <div class="forecast-card">
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600">Pipeline forecast</div>
+    <div class="forecast-num">{{ forecast.min }}-{{ forecast.max }} meetings</div>
+    <div class="forecast-note">expected from {{ forecast.interested }} interested leads</div>
+    <div class="forecast-tag">{{ forecast.rate_pct }}% historical meeting rate</div>
+  </div>
+  {% else %}
+  <a href="{{ url_for('client_leads', token_str=ct.token) }}" class="pipeline-box">
+    <div class="label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600">All leads</div>
+    <div class="pb-num" style="color:var(--text)">{{ pipeline.meeting + pipeline.interested }}</div>
+    <div class="pb-sub">Active in pipeline</div>
+  </a>
+  {% endif %}
+</div>
+
+{# ── Recent wins + Funnel/Trend ── #}
+<div class="two-col-wide" style="margin-bottom:24px">
+
+  {# Funnel with conversion rates #}
+  <div class="section-card">
+    <div class="section-head">
+      <h3>{{ 'Unified Funnel (Email + LinkedIn)' if has_li else 'Conversion Funnel' }}</h3>
+      <span class="hint">All time</span>
+    </div>
+    <div class="section-body">
+      {% set max_val = funnel[0].value if funnel and funnel[0].value else 1 %}
+      {% for stage in funnel %}
+      {% set bar_pct = [(stage.value / max_val * 100)|round(0)|int, 1]|max if max_val else 1 %}
+      {% if stage.conv_rate is defined and stage.conv_rate %}
+      <div class="funnel-conv">
+        <span>&#8595;</span>
+        <span class="{{ 'funnel-conv-good' if stage.conv_rate >= 5 else '' }}">{{ stage.conv_rate }}% conversion</span>
+      </div>
+      {% endif %}
+      <div class="funnel-row2">
+        <div class="funnel-label2">{{ stage.label }}</div>
+        <div class="funnel-track">
+          <div class="funnel-fill" style="width:{{ bar_pct }}%;background:{{ stage.color }}">
+            {% if stage.value > 0 %}{{ stage.value }}{% endif %}
+          </div>
+        </div>
+        <div class="funnel-count2">{{ stage.value }}</div>
+      </div>
+      {% if stage.detail is defined and stage.detail %}
+      <div class="funnel-detail2">{{ stage.detail }}</div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  {# Recent wins feed #}
+  <div class="section-card">
+    <div class="section-head">
+      <h3>What happened recently</h3>
+      <span class="hint">Last 30 days</span>
+    </div>
+    {% if wins %}
+    <div style="padding:4px 0">
+      {% for w in wins %}
+      <div class="feed-item">
+        <div class="feed-icon fi-{{ w.type }}">
+          {% if w.icon == 'trophy' %}&#127942;
+          {% elif w.icon == 'calendar' %}&#128197;
+          {% elif w.icon == 'star' %}&#11088;
+          {% else %}&#9993;{% endif %}
+        </div>
+        <div class="feed-text">
+          <div class="feed-label">{{ w.label }}</div>
+          {% if w.sub %}<div class="feed-sub">{{ w.sub }}</div>{% endif %}
+        </div>
+        {% if w.at %}
+        <div class="feed-time">{{ w.at|time_ago }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:28px 18px">No recent activity yet.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Trend ── #}
+{% if trend %}
+<div class="section-card" style="margin-bottom:24px">
+  <div class="section-head">
+    <h3>{% if active_tf == 'custom' %}Activity ({{ start_str }} to {{ end_str }}){% elif active_tf == '7' %}7-Day Activity{% elif active_tf == '90' %}90-Day Activity{% elif active_tf == 'all' %}All-Time Activity{% else %}30-Day Activity{% endif %}</h3>
+    <span class="hint">Daily opens and replies</span>
+  </div>
+  <div class="section-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Opens per day</div>
+        {% set max_o = (trend|map(attribute='opened')|list|max) or 1 %}
+        <div class="spark-wrap">
+          {% for d in trend %}
+          <div class="spark-bar" style="background:var(--accent);opacity:.7;height:{{ [(d.opened/max_o*50)|int, 2]|max }}px"
+               title="{{ d.date }}: {{ d.opened }}"></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Replies per day</div>
+        {% set max_r = (trend|map(attribute='replies')|list|max) or 1 %}
+        <div class="spark-wrap">
+          {% for d in trend %}
+          <div class="spark-bar" style="background:var(--green);opacity:.7;height:{{ [(d.replies/max_r*50)|int, 2]|max }}px"
+               title="{{ d.date }}: {{ d.replies }}"></div>
+          {% endfor %}
+        </div>
       </div>
     </div>
-    <div class="funnel-count">{{ stage.value }}</div>
+    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);margin-top:8px">
+      <span>{{ trend[0].date }}</span><span>{{ trend[-1].date }}</span>
+    </div>
   </div>
-  {% endfor %}
 </div>
 {% endif %}
 
-{# ── Campaigns ── #}
-{% if campaigns %}
-<div class="sec-head">
-  <h2>Campaigns</h2>
-  <span class="muted">{{ campaigns|length }} active</span>
+{# ── Top Engaged Leads ── #}
+{% if top_leads %}
+<div class="section-card" style="margin-bottom:24px">
+  <div class="section-head">
+    <h3>Top Engaged Leads</h3>
+    <span class="hint">Ranked by engagement score across all channels</span>
+  </div>
+  <div class="section-body" style="padding:6px 18px">
+    {% for p, score in top_leads %}
+    <div class="lead-row">
+      <div class="lead-score {{ 'score-hot' if score >= 70 else 'score-warm' if score >= 40 else 'score-cool' }}">{{ score }}</div>
+      <div class="lead-info">
+        <div class="lead-name">{{ p.full_name }}</div>
+        <div class="lead-meta">{{ p.company_name or '' }}{% if p.job_title %} &middot; {{ p.job_title }}{% endif %}</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px">
+        {% if p.stage == 'Meeting' %}<span class="badge green"><span class="dot"></span> Meeting</span>
+        {% elif p.stage == 'Won' %}<span class="badge green">Won</span>
+        {% elif p.lt_interest_status == 1 %}<span class="badge accent">Interested</span>
+        {% elif p.email_reply_count > 0 %}<span class="badge gray">Replied</span>
+        {% elif p.email_open_count >= 3 %}<span class="badge yellow">Warm</span>
+        {% endif %}
+        {% set ts = p.timestamp_last_reply or p.timestamp_last_open %}
+        {% if ts %}<span style="font-size:11px;color:var(--dim)">{{ ts|time_ago }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div style="padding:10px 0 2px;text-align:right">
+      <a href="{{ url_for('client_leads', token_str=ct.token) }}" style="font-size:12.5px;color:var(--accent);font-weight:600">
+        View all leads and conversations →
+      </a>
+    </div>
+  </div>
 </div>
-<div class="table-wrap">
-  <table>
-    <tr>
-      <th>Campaign</th>
-      <th>Sent</th>
-      <th>Open Rate</th>
-      <th>Reply Rate</th>
-      <th>Interested</th>
-      <th>Status</th>
+{% endif %}
+
+{# ── Campaign Performance ── #}
+{% if campaigns %}
+<div class="section-card">
+  <div class="section-head">
+    <h3>Campaign Performance</h3>
+    <span class="hint">{{ campaigns|length }} campaign{{ 's' if campaigns|length != 1 }}</span>
+  </div>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="border-bottom:1px solid var(--border)">
+      <th style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:10px 18px;text-align:left">Campaign</th>
+      <th style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:10px 12px;text-align:right">Sent</th>
+      <th style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:10px 12px;text-align:right">Open %</th>
+      <th style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:10px 12px;text-align:right">Reply %</th>
+      <th style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:10px 18px;text-align:right">Interested</th>
     </tr>
     {% for c in campaigns %}
-    <tr>
-      <td style="font-weight:600;font-size:13.5px">{{ c.name }}</td>
-      <td class="muted">{{ c.emails_sent_count|default(0) }}</td>
-      <td class="{{ 'rate-good' if c.open_rate >= 25 else 'rate-warn' if c.open_rate >= 12 else 'rate-bad' }}">
-        {{ c.open_rate }}%
-      </td>
-      <td class="{{ 'rate-good' if c.reply_rate >= 3 else '' }}">{{ c.reply_rate }}%</td>
-      <td>{{ c.total_interested|default(0) }}</td>
-      <td>
-        {% if c.status_code == 1 %}
-          <span class="badge green"><span class="dot"></span> Active</span>
-        {% elif c.status_code == 2 %}
-          <span class="badge gray">Paused</span>
-        {% else %}
-          <span class="badge gray">{{ c.status_label or 'Inactive' }}</span>
-        {% endif %}
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:11px 18px;font-weight:600;font-size:13px">{{ c.name }}</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px;color:var(--muted)">{{ '{:,}'.format(c.emails_sent_count) }}</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px" class="{{ 'rate-good' if c.open_rate >= 25 else 'rate-warn' if c.open_rate >= 12 else 'rate-bad' }}">{{ c.open_rate }}%</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px" class="{{ 'rate-good' if c.reply_rate >= 4 else '' }}">{{ c.reply_rate }}%</td>
+      <td style="padding:11px 18px;text-align:right">
+        {% if c.total_interested > 0 %}<span class="badge green" style="font-size:11px">{{ c.total_interested }}</span>
+        {% else %}<span style="color:var(--dim);font-size:13px">0</span>{% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -103,68 +370,13 @@
 </div>
 {% endif %}
 
-{# ── Two-column: engaged + interested ── #}
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+{% endblock %}
 
-  {# Engaged leads #}
-  <div>
-    <div class="sec-head"><h2>Engaged Leads</h2><span class="muted">Opened 3+ times</span></div>
-    <div class="table-wrap">
-      {% if warm %}
-      <table>
-        <tr><th>Name</th><th>Company</th><th>Opens</th></tr>
-        {% for p in warm %}
-        <tr>
-          <td style="font-weight:500">{{ p.full_name }}</td>
-          <td class="muted" style="font-size:12.5px">{{ p.company_name or '' }}</td>
-          <td><span class="badge accent">{{ p.email_open_count }}</span></td>
-        </tr>
-        {% endfor %}
-      </table>
-      {% else %}
-      <div class="empty-state">No highly engaged leads yet.</div>
-      {% endif %}
-    </div>
-  </div>
-
-  {# Interested / replied #}
-  <div>
-    <div class="sec-head"><h2>Interested Leads</h2><span class="muted">Positive replies</span></div>
-    <div class="table-wrap">
-      {% if interested %}
-      <table>
-        <tr><th>Name</th><th>Company</th><th>Stage</th></tr>
-        {% for p in interested %}
-        <tr>
-          <td style="font-weight:500">{{ p.full_name }}</td>
-          <td class="muted" style="font-size:12.5px">{{ p.company_name or '' }}</td>
-          <td>
-            {% if p.stage == 'Meeting' %}
-              <span class="badge green">Meeting</span>
-            {% elif p.stage == 'Won' %}
-              <span class="badge green">Closed</span>
-            {% else %}
-              <span class="badge accent">Interested</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </table>
-      {% else %}
-      <div class="empty-state">No interested leads yet.</div>
-      {% endif %}
-    </div>
-  </div>
-
-</div>
-
-<div style="margin-top:28px;padding-top:18px;border-top:1px solid var(--border);
-            display:flex;justify-content:space-between;align-items:center">
-  <span style="font-size:12px;color:var(--dim)">Outleadz · outreach intelligence</span>
-  <a href="{{ url_for('client_leads', token_str=ct.token) }}"
-     style="font-size:13px;color:var(--accent);font-weight:600">
-    View all leads & conversations →
-  </a>
-</div>
-
+{% block scripts %}
+<script>
+document.getElementById('coCustomToggle')?.addEventListener('click', function(e) {
+  e.preventDefault();
+  document.getElementById('coDateRange').classList.toggle('show');
+});
+</script>
 {% endblock %}

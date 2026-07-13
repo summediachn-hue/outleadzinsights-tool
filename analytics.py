@@ -141,6 +141,8 @@ def lifetime_stats(account_id=None) -> Dict:
         "total_leads": pq.count(),
         "warm_leads": pq.filter(Prospect.email_open_count >= WARM_THRESHOLD).count(),
         "interested": int(t["interested"]),
+        "meetings": int(t["meetings"]),
+        "replies": int(t["replies_unique"]),
         "pipeline_value": int(t["opp_value"]),
         "repeat_open_ratio": round(t["opens"] / t["opens_unique"], 2) if t["opens_unique"] else 0,
     }
@@ -1265,16 +1267,20 @@ def gap_lists(account_id: int, limit: int = 25) -> Dict:
     }
 
 
-def best_send_time(account_id: int) -> Dict:
+def best_send_time(account_id: int, start=None, end=None) -> Dict:
     """
     Day-of-week and hour-of-day breakdown for email_opened events.
     Returns counts used to render a heatmap.
     """
     DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    events = (Event.query
-              .filter_by(account_id=account_id, type='email_opened')
-              .filter(Event.occurred_at.isnot(None))
-              .all())
+    q = (Event.query
+         .filter_by(account_id=account_id, type='email_opened')
+         .filter(Event.occurred_at.isnot(None)))
+    if start:
+        q = q.filter(Event.occurred_at >= datetime.combine(start, datetime.min.time()))
+    if end:
+        q = q.filter(Event.occurred_at < datetime.combine(end + timedelta(days=1), datetime.min.time()))
+    events = q.all()
 
     day_counts  = {d: 0 for d in DAYS}
     hour_counts = {h: 0 for h in range(24)}
@@ -1583,3 +1589,93 @@ def company_heat_map(account_id: int, limit: int = 15) -> List[Dict]:
 
     results.sort(key=lambda x: -x["score"])
     return results[:limit]
+
+
+def weekly_kpis(account_id: int) -> Dict:
+    """This week vs last week for key outreach metrics (7-day windows)."""
+    today = date.today()
+    w0 = (today - timedelta(days=7)).isoformat()
+    w1 = (today - timedelta(days=14)).isoformat()
+    tod = today.isoformat()
+
+    cids = _acct_campaign_ids(account_id)
+    if not cids:
+        return {}
+
+    def _window(start, end):
+        r = db.session.query(
+            func.sum(DailyMetric.unique_opened),
+            func.sum(DailyMetric.unique_replies),
+        ).filter(
+            DailyMetric.campaign_id.in_(cids),
+            DailyMetric.date >= start,
+            DailyMetric.date < end,
+        ).first()
+        return int(r[0] or 0), int(r[1] or 0)
+
+    this_opens, this_replies = _window(w0, tod)
+    last_opens, last_replies = _window(w1, w0)
+
+    cutoff_this = datetime.utcnow() - timedelta(days=7)
+    cutoff_last = datetime.utcnow() - timedelta(days=14)
+    pq = Prospect.query.filter_by(account_id=account_id)
+
+    this_int = pq.filter(Prospect.lt_interest_status >= 1,
+                         Prospect.last_activity_at >= cutoff_this).count()
+    last_int = pq.filter(Prospect.lt_interest_status >= 1,
+                         Prospect.last_activity_at >= cutoff_last,
+                         Prospect.last_activity_at < cutoff_this).count()
+
+    this_mtg = pq.filter(Prospect.stage == 'Meeting',
+                         Prospect.last_activity_at >= cutoff_this).count()
+    last_mtg = pq.filter(Prospect.stage == 'Meeting',
+                         Prospect.last_activity_at >= cutoff_last,
+                         Prospect.last_activity_at < cutoff_this).count()
+
+    return {
+        "opens":      {"this": this_opens,  "last": last_opens,  "delta": this_opens  - last_opens},
+        "replies":    {"this": this_replies, "last": last_replies,"delta": this_replies - last_replies},
+        "interested": {"this": this_int,    "last": last_int,    "delta": this_int    - last_int},
+        "meetings":   {"this": this_mtg,    "last": last_mtg,    "delta": this_mtg    - last_mtg},
+    }
+
+
+def recent_wins(account_id: int, limit: int = 8) -> List[Dict]:
+    """Recent notable events for the client activity feed, last 30 days."""
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    pq = Prospect.query.filter_by(account_id=account_id)
+    events = []
+
+    for p in pq.filter(Prospect.stage == 'Won',
+                       Prospect.last_activity_at >= cutoff).all():
+        events.append({"type": "won", "icon": "trophy",
+                       "label": f"Deal closed with {p.full_name}",
+                       "sub": p.company_name or "",
+                       "at": p.last_activity_at})
+
+    for p in pq.filter(Prospect.stage == 'Meeting',
+                       Prospect.last_activity_at >= cutoff).all():
+        sub = ", ".join(filter(None, [p.job_title, p.company_name]))
+        events.append({"type": "meeting", "icon": "calendar",
+                       "label": f"Meeting booked with {p.full_name}",
+                       "sub": sub, "at": p.last_activity_at})
+
+    for p in pq.filter(Prospect.lt_interest_status == 1,
+                       Prospect.last_activity_at >= cutoff).all():
+        if p.stage not in ("Meeting", "Won"):
+            events.append({"type": "interested", "icon": "star",
+                           "label": f"{p.full_name} is interested",
+                           "sub": p.company_name or "",
+                           "at": p.timestamp_last_reply or p.last_activity_at})
+
+    for p in pq.filter(Prospect.email_reply_count > 0,
+                       Prospect.timestamp_last_reply >= cutoff,
+                       db.or_(Prospect.lt_interest_status.is_(None),
+                              Prospect.lt_interest_status <= 0)).all():
+        events.append({"type": "reply", "icon": "mail",
+                       "label": f"{p.full_name} replied",
+                       "sub": p.company_name or "",
+                       "at": p.timestamp_last_reply})
+
+    events.sort(key=lambda e: e["at"] or datetime.min, reverse=True)
+    return events[:limit]

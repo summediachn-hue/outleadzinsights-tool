@@ -2,6 +2,28 @@
 {% block title %}Dashboard · Outleadz{% endblock %}
 {% block topbar %}Dashboard · all campaigns combined{% endblock %}
 {% block content %}
+<style>
+.delta{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:600;margin-top:5px;padding:2px 7px;border-radius:6px}
+.delta-up{background:var(--green-bg);color:var(--green)}
+.delta-down{background:var(--red-bg);color:var(--red)}
+.delta-flat{background:var(--surface2);color:var(--dim)}
+
+.forecast-card{background:linear-gradient(135deg,var(--accent-bg) 0%,#f0effe 100%);border:1px solid #d5d2fb;
+               border-radius:13px;padding:18px 20px}
+.forecast-num{font-size:26px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
+.forecast-note{font-size:12px;color:var(--muted);margin-top:4px}
+.forecast-tag{display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:var(--accent);
+              color:#fff;padding:2px 8px;border-radius:5px}
+
+.wins-feed{display:flex;flex-direction:column;gap:0}
+.win-item{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.win-item:last-child{border-bottom:none}
+.win-ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.win-body{flex:1;min-width:0}
+.win-label{font-size:13px;font-weight:600;color:var(--text)}
+.win-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
+.win-at{font-size:11px;color:var(--dim);flex-shrink:0;margin-top:2px}
+</style>
 <div class="page-header">
   <h1>Dashboard</h1>
   <p>Everything across all your campaigns, in plain numbers. Hover any <span class="info" data-tip="Hover these icons anywhere in the app to see what a metric means in plain English.">i</span> to learn what a metric means.</p>
@@ -51,14 +73,26 @@
   <div class="metric">
     <div class="m-label">Open Rate <span class="info" data-tip="Out of everyone you emailed, the share who opened at least one email. The number beside it is how many individual people that is.">i</span></div>
     <div class="m-value">{{ metrics.open_rate }}%<span class="m-count">{{ '{:,}'.format(metrics.opens) }} people</span></div>
+    {% if wk and wk.opens %}
+    {% set d = wk.opens.delta %}
+    <div class="delta {{ 'delta-up' if d > 0 else 'delta-down' if d < 0 else 'delta-flat' }}">{% if d > 0 %}+{% endif %}{{ d }} this week</div>
+    {% endif %}
   </div>
   <div class="metric">
     <div class="m-label">Reply Rate <span class="info" data-tip="The share of people you emailed who wrote back. The number beside it is how many replies came in.">i</span></div>
     <div class="m-value">{{ metrics.reply_rate }}%<span class="m-count">{{ '{:,}'.format(metrics.replies) }} replies</span></div>
+    {% if wk and wk.replies %}
+    {% set d = wk.replies.delta %}
+    <div class="delta {{ 'delta-up' if d > 0 else 'delta-down' if d < 0 else 'delta-flat' }}">{% if d > 0 %}+{% endif %}{{ d }} this week</div>
+    {% endif %}
   </div>
   <div class="metric">
     <div class="m-label">Opportunities <span class="info" data-tip="Replies that turned into real sales opportunities: someone interested, a meeting booked, or a deal.">i</span></div>
     <div class="m-value">{{ metrics.opportunities }}</div>
+    {% if wk and wk.interested %}
+    {% set d = wk.interested.delta %}
+    <div class="delta {{ 'delta-up' if d > 0 else 'delta-down' if d < 0 else 'delta-flat' }}">{% if d > 0 %}+{% endif %}{{ d }} interested this week</div>
+    {% endif %}
   </div>
 </div>
 
@@ -77,14 +111,52 @@
     <div class="m-label">Interested <span class="info" data-tip="People who replied positively or asked to talk, as classified by Instantly.">i</span></div>
     <div class="m-value" style="color:var(--green)">{{ life.interested }}</div>
   </div>
+  {% if forecast %}
+  <div class="forecast-card">
+    <div class="forecast-num">{{ forecast.min }}-{{ forecast.max }}</div>
+    <div class="forecast-note">projected meetings from {{ forecast.interested }} interested leads</div>
+    <div class="forecast-tag">{{ forecast.rate_pct }}% historical meeting rate</div>
+  </div>
+  {% else %}
   <div class="metric">
     <div class="m-label">Pipeline Value <span class="info" data-tip="The estimated dollar value of all opportunities created from this outreach.">i</span></div>
     <div class="m-value" style="color:var(--green)">${{ '{:,}'.format(life.pipeline_value) }}</div>
   </div>
+  {% endif %}
 </div>
 
 <!-- Account priorities + recommendations (command center) -->
 {% include "_account_recs.html" %}
+
+<!-- Recent wins feed -->
+{% if wins %}
+<div class="table-wrap" style="margin-bottom:22px">
+  <div class="table-header"><h2>Recent Activity</h2></div>
+  <div style="padding:4px 19px 8px" class="wins-feed">
+    {% for w in wins %}
+    <div class="win-item">
+      <div class="win-ic" style="background:
+        {% if w.type == 'won' %}var(--green-bg){% elif w.type == 'meeting' %}var(--orange-bg){% elif w.type == 'interested' %}var(--accent-bg){% else %}var(--surface2){% endif %}">
+        {% if w.type == 'won' %}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+        {% elif w.type == 'meeting' %}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        {% elif w.type == 'interested' %}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        {% else %}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        {% endif %}
+      </div>
+      <div class="win-body">
+        <div class="win-label">{{ w.label }}</div>
+        {% if w.sub %}<div class="win-sub">{{ w.sub }}</div>{% endif %}
+      </div>
+      <div class="win-at">{{ w.at|time_ago if w.at else '' }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <!-- Funnel -->
 <div class="table-wrap" style="margin-top:24px">
@@ -101,34 +173,12 @@
   </div>
 </div>
 
-<!-- Timezone-aware timing (shared partial) -->
-{% include "_timing.html" %}
-
-<!-- Hidden intent -->
-<div class="table-wrap">
-  <div class="table-header">
-    <h2><span class="dot orange"></span>Hidden Intent: Opened {{ warm_threshold }}+ Times, Never Replied
-      <span class="info" data-tip="These prospects keep opening your emails but have not replied. High interest, no response yet: your best follow-up targets.">i</span></h2>
-    <a href="{{ url_for('leads') }}?f=hidden" class="btn btn-secondary btn-sm">View all</a>
-  </div>
-  {% if hidden %}
-  <table>
-    <tr><th>Name</th><th>Company</th><th>Opens</th><th>Score</th><th>LinkedIn</th><th></th></tr>
-    {% for l in hidden %}
-    <tr>
-      <td><strong>{{ l.full_name }}</strong></td>
-      <td class="muted">{{ l.company_name or l.company_domain }}</td>
-      <td><span class="intent-chip">{{ l.email_open_count }}× open</span></td>
-      <td class="muted">{{ l.warm_score }}</td>
-      <td>{% if l.linkedin_url %}<a href="{{ l.linkedin_url }}" target="_blank">LinkedIn ↗</a>{% endif %}</td>
-      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <div class="empty-state">No data yet: click <strong>Sync Now</strong>.</div>
-  {% endif %}
-</div>
+{% if hidden %}
+<a href="{{ url_for('leads') }}?f=hidden" style="display:block;margin-top:4px;background:var(--yellow-bg);border:1px solid #ecdcb4;border-radius:11px;padding:12px 16px;text-decoration:none">
+  <div style="font-size:13px;font-weight:700;color:var(--yellow)">{{ hidden|length }}{% if hidden|length == 8 %}+{% endif %} hidden intent leads</div>
+  <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Opened {{ warm_threshold }}+ times, never replied. View all in Leads.</div>
+</a>
+{% endif %}
 {% endif %}{# has_instantly #}
 {% if hr_account %}
 {# ── LinkedIn KPIs ── #}
@@ -155,37 +205,6 @@
     <div class="m-label">Interested (LinkedIn)</div>
     <div class="m-value" style="color:var(--green)">{{ hr_kpis.interested }}<span class="m-count">{{ hr_kpis.interest_rate }}% of leads</span></div>
   </div>
-</div>
-{% endif %}
-
-{# ── Unified Funnel (shown when both channels OR LinkedIn-only with data) ── #}
-{% if uni_funnel and uni_funnel[0].value > 0 %}
-<div style="margin-top:24px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <h2 style="font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
-      {% if has_instantly and hr_account %}Combined Funnel{% else %}Outreach Funnel{% endif %}
-    </h2>
-    {% if has_instantly and hr_account %}
-    <div style="display:flex;gap:5px">
-      <span class="badge accent" style="font-size:10px">Email</span>
-      <span class="badge" style="font-size:10px;background:#e8f0fe;color:#0077b5;font-weight:700">in LinkedIn</span>
-    </div>
-    {% endif %}
-  </div>
-  {% set max_val = uni_funnel[0].value if uni_funnel[0].value else 1 %}
-  {% for row in uni_funnel %}
-  <div style="margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:3px">
-      <div style="width:110px;font-size:11.5px;color:var(--muted);font-weight:500;text-align:right;flex-shrink:0">{{ row.label }}</div>
-      <div style="flex:1;height:22px;background:var(--surface2);border-radius:4px;overflow:hidden">
-        <div style="height:100%;background:{{ row.color }};border-radius:4px;width:{{ [((row.value/max_val*100)|int), 100]|min }}%;min-width:{% if row.value > 0 %}4px{% else %}0{% endif %}"></div>
-      </div>
-      <div style="width:44px;text-align:right;font-size:12px;font-weight:700;flex-shrink:0">{{ '{:,}'.format(row.value) }}</div>
-      <div style="width:40px;text-align:right;font-size:10.5px;color:var(--dim);flex-shrink:0">{{ row.pct }}%</div>
-    </div>
-    <div style="padding-left:122px;font-size:10.5px;color:var(--dim)">{{ row.detail }}</div>
-  </div>
-  {% endfor %}
 </div>
 {% endif %}
 

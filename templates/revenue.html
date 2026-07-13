@@ -6,6 +6,20 @@
   <p>Pipeline value and outcomes: what the outreach actually produced.</p>
 </div>
 
+<form class="tf-bar" method="get" action="{{ url_for('revenue') }}">
+  <span class="tf-label">Funnel period:</span>
+  {% for val, label in timeframes %}
+  <a href="{{ url_for('revenue') }}?days={{ val }}" class="tf-pill {{ 'active' if active_tf == val }}">{{ label }}</a>
+  {% endfor %}
+  <a href="#" class="tf-pill {{ 'active' if active_tf == 'custom' }}" id="revCustomToggle">Custom range</a>
+  <span class="daterange {{ 'show' if active_tf == 'custom' }}" id="revDateRange">
+    <input type="date" name="start" value="{{ start_str }}" aria-label="Start date">
+    <span class="muted" style="font-size:12px">to</span>
+    <input type="date" name="end" value="{{ end_str }}" aria-label="End date">
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+  </span>
+</form>
+
 <div class="cards">
   <div class="card"><div class="label">Pipeline Value <span class="info" data-tip="Estimated dollar value of all opportunities created from this outreach.">i</span></div><div class="value green">${{ '{:,}'.format(rev.pipeline_value) }}</div></div>
   <div class="card"><div class="label">Opportunities <span class="info" data-tip="Replies that became real sales opportunities: interested, meeting, or deal.">i</span></div><div class="value accent">{{ rev.opportunities }}</div></div>
@@ -61,4 +75,13 @@
     {% else %}<div class="empty-state">No sentiment data yet.</div>{% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('revCustomToggle')?.addEventListener('click', function(e) {
+  e.preventDefault();
+  document.getElementById('revDateRange').classList.toggle('show');
+});
+</script>
 {% endblock %}

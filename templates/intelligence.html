@@ -34,15 +34,19 @@
 .day-bar{height:100%;background:var(--accent);border-radius:4px;transition:width .4s}
 .day-count{width:28px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0}
 
-/* Company heat */
-.co-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2)}
-.co-row:last-child{border-bottom:none}
-.co-score{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
-.co-info{flex:1;min-width:0}
-.co-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.co-signals{display:flex;gap:5px;margin-top:3px;flex-wrap:wrap}
-.co-bar-wrap{width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;flex-shrink:0}
-.co-bar{height:100%;border-radius:3px}
+/* Company heat map - tinted cards */
+.ht-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:16px}
+.ht-card{border-radius:11px;border:1px solid;padding:13px 15px;transition:box-shadow .15s}
+.ht-card:hover{box-shadow:0 4px 14px rgba(17,24,39,.1)}
+.ht-5{background:#fce8e8;color:#7a1717;border-color:#f7c1c1}
+.ht-4{background:#faeeda;color:#633806;border-color:#fac775}
+.ht-3{background:#fefce8;color:#713f12;border-color:#fde68a}
+.ht-2{background:#eaf3de;color:#27500a;border-color:#c0dd97}
+.ht-1{background:#eeedfe;color:#3c3489;border-color:#cecbf6}
+.ht-co{font-size:13px;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ht-signals{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.ht-sig{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;background:rgba(0,0,0,.07)}
+.ht-meta{font-size:11px;opacity:.7;font-weight:500}
 
 /* Gap lists */
 .gap-lead{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--surface2)}
@@ -51,6 +55,33 @@
 .gap-info{flex:1;min-width:0}
 .gap-name{font-size:12.5px;font-weight:600}
 .gap-co{font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Lead exhaustion - option A rows */
+.ex-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.ex-stat{background:var(--surface2);border-radius:11px;padding:14px 16px;text-align:center}
+.ex-stat-n{font-size:26px;font-weight:700;letter-spacing:-.4px;line-height:1}
+.ex-stat-t{font-size:12px;font-weight:600;margin-top:4px}
+.ex-stat-d{font-size:11px;color:var(--dim);margin-top:2px}
+.ex-section{margin-bottom:18px}
+.ex-sec-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.ex-sec-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.ex-sec-ct{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px}
+.ex-rows{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.ex-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);transition:background .1s}
+.ex-row:last-child{border-bottom:none}
+.ex-row:hover{background:var(--surface2)}
+.ex-av{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.ex-av-o{background:var(--yellow-bg);color:var(--yellow)}
+.ex-av-a{background:var(--accent-bg);color:var(--accent)}
+.ex-info{flex:1;min-width:0}
+.ex-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-sub{font-size:11.5px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-sig{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0;white-space:nowrap}
+.ex-sig-o{background:var(--yellow-bg);color:var(--yellow)}
+.ex-sig-a{background:var(--accent-bg);color:var(--accent)}
+.ex-li-btn{font-size:11px;color:var(--accent);background:var(--accent-bg);border:1px solid #d5d2fb;border-radius:7px;padding:3px 10px;flex-shrink:0;text-decoration:none;font-weight:600;transition:.12s}
+.ex-li-btn:hover{background:#e0defb}
+.ex-more{padding:9px 14px;font-size:12px;color:var(--muted);text-align:center;border-top:1px solid var(--border)}
 
 /* Lift */
 .lift-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2)}
@@ -66,39 +97,110 @@
   <p>Patterns, timing, and gaps hiding in your outreach data.</p>
 </div>
 
-{# ── Unified Funnel ── #}
-{% if uni_funnel %}
-<div class="int-card-full">
-  <div class="int-head">
-    <div><div class="int-title">Unified Funnel</div><div class="int-sub">Both channels combined, one conversion picture</div></div>
-    {% if has_instantly and has_heyreach %}
-    <div style="display:flex;gap:5px">
-      <span class="badge accent" style="font-size:10px">Email</span>
-      <span class="badge" style="font-size:10px;background:#e8f0fe;color:#0077b5;font-weight:700">in LinkedIn</span>
-    </div>
-    {% endif %}
-  </div>
-  <div class="int-body">
-    {% set max_val = uni_funnel[0].value if uni_funnel and uni_funnel[0].value else 1 %}
-    {% for row in uni_funnel %}
-    <div class="uni-row">
-      <div class="uni-label">{{ row.label }}</div>
-      <div class="uni-bar-wrap">
-        <div class="uni-bar" style="width:{{ [((row.value/max_val*100)|int), 100]|min if max_val else 0 }}%;background:{{ row.color }};min-width:{% if row.value > 0 %}4px{% else %}0{% endif %}"></div>
+<form class="tf-bar" method="get" action="{{ url_for('intelligence') }}">
+  <span class="tf-label">Send timing data:</span>
+  {% for val, label in timeframes %}
+  <a href="{{ url_for('intelligence') }}?days={{ val }}" class="tf-pill {{ 'active' if active_tf == val }}">{{ label }}</a>
+  {% endfor %}
+  <a href="#" class="tf-pill {{ 'active' if active_tf == 'custom' }}" id="intCustomToggle">Custom range</a>
+  <span class="daterange {{ 'show' if active_tf == 'custom' }}" id="intDateRange">
+    <input type="date" name="start" value="{{ start_str }}" aria-label="Start date">
+    <span class="muted" style="font-size:12px">to</span>
+    <input type="date" name="end" value="{{ end_str }}" aria-label="End date">
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+  </span>
+</form>
+
+{# ── Row A: Unified Funnel + Send Time side by side ── #}
+{% set _has_funnel = uni_funnel %}
+{% set _has_stime = send_time and send_time.total > 0 %}
+{% if _has_funnel or _has_stime %}
+<div style="display:grid;grid-template-columns:{% if _has_funnel and _has_stime %}1.3fr 1fr{% else %}1fr{% endif %};gap:18px;align-items:start;margin-bottom:18px">
+
+  {% if _has_funnel %}
+  <div class="int-card">
+    <div class="int-head">
+      <div><div class="int-title">Unified Funnel</div><div class="int-sub">Both channels combined, one conversion picture</div></div>
+      {% if has_instantly and has_heyreach %}
+      <div style="display:flex;gap:5px">
+        <span class="badge accent" style="font-size:10px">Email</span>
+        <span class="badge" style="font-size:10px;background:#e8f0fe;color:#0077b5;font-weight:700">LinkedIn</span>
       </div>
-      <div class="uni-num">{{ '{:,}'.format(row.value) }}</div>
-      <div class="uni-pct">{{ row.pct }}%</div>
+      {% endif %}
     </div>
-    <div class="uni-detail">{{ row.detail }}</div>
-    {% endfor %}
+    <div class="int-body">
+      {% set max_val = uni_funnel[0].value if uni_funnel and uni_funnel[0].value else 1 %}
+      {% for row in uni_funnel %}
+      <div class="uni-row">
+        <div class="uni-label">{{ row.label }}</div>
+        <div class="uni-bar-wrap">
+          <div class="uni-bar" style="width:{{ [((row.value/max_val*100)|int), 100]|min if max_val else 0 }}%;background:{{ row.color }};min-width:{% if row.value > 0 %}4px{% else %}0{% endif %}"></div>
+        </div>
+        <div class="uni-num">{{ '{:,}'.format(row.value) }}</div>
+        <div class="uni-pct">{{ row.pct }}%</div>
+      </div>
+      <div class="uni-detail">{{ row.detail }}</div>
+      {% endfor %}
+    </div>
   </div>
+  {% endif %}
+
+  {% if _has_stime %}
+  <div class="int-card">
+    <div class="int-head">
+      <div>
+        <div class="int-title">When Your Audience Opens Emails</div>
+        <div class="int-sub">Based on last-open timestamp of {{ send_time.total }} leads (UTC)</div>
+      </div>
+      {% if send_time.best_day %}
+      <div style="text-align:right;font-size:11px;color:var(--muted)">
+        Best day: <strong style="color:var(--accent)">{{ send_time.best_day }}</strong><br>
+        Peak hour: <strong style="color:var(--accent)">{{ send_time.best_hour }}:00 UTC</strong>
+      </div>
+      {% endif %}
+    </div>
+    <div class="int-body">
+      {% set max_day = send_time.day_counts.values()|max %}
+      {% for day in send_time.days %}
+      <div class="day-bar-row">
+        <div class="day-label">{{ day }}</div>
+        <div class="day-bar-wrap">
+          <div class="day-bar" style="width:{{ ((send_time.day_counts[day] / max_day * 100)|int) if max_day else 0 }}%;{{ 'opacity:.3' if send_time.day_counts[day]==0 else '' }}"></div>
+        </div>
+        <div class="day-count">{{ send_time.day_counts[day] }}</div>
+      </div>
+      {% endfor %}
+      <div style="margin-top:10px;font-size:11px;color:var(--dim)">Schedule sends for {{ send_time.best_day }}s to maximize open rate.</div>
+      {% if send_time.hour_counts %}
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Opens by hour (UTC)</div>
+        {% set max_hr = send_time.hour_counts.values()|max %}
+        <div style="display:flex;gap:2px;align-items:flex-end;height:40px">
+          {% for h in range(24) %}
+          {% set cnt = send_time.hour_counts.get(h, 0) %}
+          {% set pct = ((cnt / max_hr * 100)|int) if max_hr else 0 %}
+          <div title="{{ h }}:00 - {{ cnt }} opens" style="flex:1;background:{% if h == send_time.best_hour %}var(--accent){% else %}var(--surface2){% endif %};border-radius:2px 2px 0 0;height:{{ [pct, 8]|max if cnt else 3 }}%;min-height:{% if cnt %}6px{% else %}2px{% endif %};transition:background .1s;cursor:default"></div>
+          {% endfor %}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--dim);margin-top:3px;padding:0 1px">
+          <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 {% endif %}
 
-<div class="int-grid">
+{# ── Row B: Channel Lift + Email Gap (pair if both exist) ── #}
+{% set _has_lift = lift %}
+{% set _has_egap = gaps.email_warm_not_li %}
+{% if _has_lift or _has_egap %}
+<div style="display:grid;grid-template-columns:{% if _has_lift and _has_egap %}1fr 1fr{% else %}1fr{% endif %};gap:18px;align-items:start;margin-bottom:18px">
 
-  {# ── Channel Lift ── #}
-  {% if lift %}
+  {% if _has_lift %}
   <div class="int-card">
     <div class="int-head">
       <div>
@@ -141,53 +243,16 @@
   </div>
   {% endif %}
 
-  {# ── Best Send Time ── #}
-  {% if send_time and send_time.total > 0 %}
-  <div class="int-card">
-    <div class="int-head">
-      <div>
-        <div class="int-title">When Your Audience Opens Emails</div>
-        <div class="int-sub">Based on last-open timestamp of {{ send_time.total }} leads (UTC)</div>
-      </div>
-      {% if send_time.best_day %}
-      <div style="text-align:right;font-size:11px;color:var(--muted)">
-        Best day: <strong style="color:var(--accent)">{{ send_time.best_day }}</strong><br>
-        Peak hour: <strong style="color:var(--accent)">{{ send_time.best_hour }}:00 UTC</strong>
-      </div>
-      {% endif %}
-    </div>
-    <div class="int-body">
-      {% set max_day = send_time.day_counts.values()|max %}
-      {% for day in send_time.days %}
-      <div class="day-bar-row">
-        <div class="day-label">{{ day }}</div>
-        <div class="day-bar-wrap">
-          <div class="day-bar" style="width:{{ ((send_time.day_counts[day] / max_day * 100)|int) if max_day else 0 }}%;{{ 'opacity:.3' if send_time.day_counts[day]==0 else '' }}"></div>
-        </div>
-        <div class="day-count">{{ send_time.day_counts[day] }}</div>
-      </div>
-      {% endfor %}
-      <div style="margin-top:10px;font-size:11px;color:var(--dim)">Schedule sends for {{ send_time.best_day }}s to maximize open rate.</div>
-    </div>
-  </div>
-  {% endif %}
-
-</div>
-
-{# ── Gap Lists ── #}
-{% if gaps.email_warm_not_li or gaps.li_interested_not_email %}
-<div class="int-grid" style="margin-bottom:18px">
-
-  {% if gaps.email_warm_not_li %}
+  {% if _has_egap %}
   <div class="int-card">
     <div class="int-head">
       <div>
         <div class="int-title" style="color:var(--accent)">{{ gaps.email_warm_not_li|length }} Warm Email Leads, Not on LinkedIn Yet</div>
-        <div class="int-sub">These people keep opening your emails but haven't been contacted on LinkedIn</div>
+        <div class="int-sub">Keep opening emails but haven't been contacted on LinkedIn</div>
       </div>
     </div>
     <div class="int-body" style="padding:8px 16px">
-      {% for p in gaps.email_warm_not_li[:12] %}
+      {% for p in gaps.email_warm_not_li[:10] %}
       <div class="gap-lead">
         <div class="gap-avatar" style="background:var(--accent)">{{ (p.first_name or '?')[0] }}</div>
         <div class="gap-info">
@@ -195,30 +260,35 @@
           <div class="gap-co">{{ p.company_name or p.company_domain or '' }}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <span class="badge orange" style="font-size:10px">{{ p.email_open_count }}× open</span>
+          <span class="badge orange" style="font-size:10px">{{ p.email_open_count }}x open</span>
           {% if p.linkedin_url %}
-          <a href="{{ p.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">LinkedIn ↗</a>
+          <a href="{{ p.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">LinkedIn</a>
           {% endif %}
         </div>
       </div>
       {% endfor %}
-      {% if gaps.email_warm_not_li|length > 12 %}
-      <div style="font-size:11px;color:var(--muted);padding:8px 0">+{{ gaps.email_warm_not_li|length - 12 }} more</div>
+      {% if gaps.email_warm_not_li|length > 10 %}
+      <div style="font-size:11px;color:var(--muted);padding:8px 0;border-top:1px solid var(--border);text-align:center">+{{ gaps.email_warm_not_li|length - 10 }} more</div>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
-  {% if gaps.li_interested_not_email %}
+</div>
+{% endif %}
+
+{# ── Row C: LI Gap standalone (full-width) ── #}
+{% if gaps.li_interested_not_email %}
+<div style="margin-bottom:18px">
   <div class="int-card">
     <div class="int-head">
       <div>
         <div class="int-title" style="color:var(--green)">{{ gaps.li_interested_not_email|length }} LinkedIn Interested, Never Emailed</div>
-        <div class="int-sub">These people replied interested on LinkedIn but you haven't emailed them</div>
+        <div class="int-sub">Replied interested on LinkedIn but you haven't followed up by email</div>
       </div>
     </div>
-    <div class="int-body" style="padding:8px 16px">
-      {% for hl in gaps.li_interested_not_email[:12] %}
+    <div class="int-body" style="padding:8px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:0">
+      {% for hl in gaps.li_interested_not_email[:10] %}
       <div class="gap-lead">
         <div class="gap-avatar" style="background:var(--green)">{{ (hl.first_name or '?')[0] }}</div>
         <div class="gap-info">
@@ -228,15 +298,16 @@
         <div style="text-align:right;flex-shrink:0">
           <span class="badge green" style="font-size:10px">Interested</span>
           {% if hl.linkedin_url %}
-          <a href="{{ hl.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">Profile ↗</a>
+          <a href="{{ hl.linkedin_url }}" target="_blank" class="btn btn-secondary btn-sm" style="margin-top:3px;display:block;font-size:10px">Profile</a>
           {% endif %}
         </div>
       </div>
       {% endfor %}
+      {% if gaps.li_interested_not_email|length > 10 %}
+      <div style="font-size:11px;color:var(--muted);padding:8px 0;border-top:1px solid var(--border);text-align:center;grid-column:1/-1">+{{ gaps.li_interested_not_email|length - 10 }} more</div>
+      {% endif %}
     </div>
   </div>
-  {% endif %}
-
 </div>
 {% endif %}
 
@@ -248,31 +319,37 @@
       <div class="int-title">Company Heat Map</div>
       <div class="int-sub">Companies with the strongest engagement across all channels</div>
     </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted)">Signal key:</span>
+      <span class="badge red" style="font-size:10px">Reply / LI interested</span>
+      <span class="badge orange" style="font-size:10px">3+ opens</span>
+      <span class="badge yellow" style="font-size:10px">1-2 opens</span>
+      <span class="badge green" style="font-size:10px">LI generic</span>
+      <span class="badge blue" style="font-size:10px">Contacted</span>
+    </div>
   </div>
-  <div class="int-body" style="padding:6px 16px">
-    {% set max_score = heat_map[0].score if heat_map else 1 %}
+  <div class="ht-grid">
     {% for co in heat_map %}
-    <div class="co-row">
-      <div class="co-score" style="{{ 'background:var(--red-bg);color:var(--red)' if co.is_hot else 'background:var(--surface2);color:var(--muted)' }}" title="{{ co.people }} contact{{ 's' if co.people != 1 }}">
-        {{ co.people }}
+    {% if co.email_replies > 0 or co.li_interested > 0 %}
+      {% set tier = 5 %}
+    {% elif co.email_opens >= 3 %}
+      {% set tier = 4 %}
+    {% elif co.email_opens >= 1 %}
+      {% set tier = 3 %}
+    {% elif co.li_generic > 0 %}
+      {% set tier = 2 %}
+    {% else %}
+      {% set tier = 1 %}
+    {% endif %}
+    <div class="ht-card ht-{{ tier }}">
+      <div class="ht-co" title="{{ co.company }}">{{ co.company }}</div>
+      <div class="ht-signals">
+        {% if co.email_replies > 0 %}<span class="ht-sig">{{ co.email_replies }} repl{{ 'y' if co.email_replies == 1 else 'ies' }}</span>{% endif %}
+        {% if co.li_interested > 0 %}<span class="ht-sig">{{ co.li_interested }} LI interested</span>{% endif %}
+        {% if co.email_opens > 0 %}<span class="ht-sig">{{ co.email_opens }} open{{ 's' if co.email_opens != 1 }}</span>{% endif %}
+        {% if co.li_generic > 0 %}<span class="ht-sig">{{ co.li_generic }} LI generic</span>{% endif %}
       </div>
-      <div class="co-info">
-        <div class="co-name">
-          {{ co.company }}
-          {% if co.is_hot %}<span class="badge red" style="font-size:9.5px;margin-left:5px">Hot</span>{% endif %}
-        </div>
-        <div class="co-signals">
-          {% if co.email_opens > 0 %}<span class="badge gray" style="font-size:9.5px">{{ co.email_opens }} opens</span>{% endif %}
-          {% if co.email_replies > 0 %}<span class="badge accent" style="font-size:9.5px">{{ co.email_replies }} replies</span>{% endif %}
-          {% if co.li_interested > 0 %}<span class="badge green" style="font-size:9.5px">{{ co.li_interested }} LinkedIn interested</span>{% endif %}
-          {% if co.li_generic > 0 %}<span class="badge orange" style="font-size:9.5px">{{ co.li_generic }} LinkedIn generic</span>{% endif %}
-          <span class="badge gray" style="font-size:9.5px">{{ co.people }} contact{{ 's' if co.people != 1 }}</span>
-          {% if co.channels == 'both' %}<span class="badge" style="font-size:9.5px;background:var(--purple-bg);color:var(--purple)">multi-channel</span>{% endif %}
-        </div>
-      </div>
-      <div class="co-bar-wrap">
-        <div class="co-bar" style="width:{{ (co.score/max_score*100)|int }}%;background:{{ 'var(--red)' if co.is_hot else 'var(--accent)' }}"></div>
-      </div>
+      <div class="ht-meta">{{ co.people }} contact{{ 's' if co.people != 1 }}{% if co.channels == 'both' %} · multi-channel{% endif %}</div>
     </div>
     {% endfor %}
   </div>
@@ -345,7 +422,7 @@
 </div>
 {% endif %}
 
-{# ── Lead Exhaustion (Sprint 3) ── #}
+{# ── Lead Exhaustion ── #}
 {% if exhaustion and exhaustion.total > 0 %}
 <div class="int-card-full" style="margin-bottom:18px">
   <div class="int-head">
@@ -353,59 +430,52 @@
       <div class="int-title">Lead Exhaustion</div>
       <div class="int-sub">Prospects who completed your email sequence with no reply or interest signal</div>
     </div>
-    <div style="text-align:right">
-      <div style="font-size:22px;font-weight:800;color:var(--muted)">{{ exhaustion.total }}</div>
-      <div style="font-size:11px;color:var(--dim)">exhausted leads</div>
+    <div style="font-size:22px;font-weight:700;color:var(--muted);text-align:right;letter-spacing:-.4px">
+      {{ exhaustion.total }}<div style="font-size:11px;color:var(--dim);font-weight:450;letter-spacing:0">exhausted leads</div>
     </div>
   </div>
   <div class="int-body">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">
-      <div style="background:var(--surface2);border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--accent)">{{ exhaustion.try_li_count }}</div>
-        <div style="font-size:11.5px;font-weight:600;margin-top:3px">Try LinkedIn</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Sequence done, not yet on LinkedIn</div>
+
+    <div class="ex-stats">
+      <div class="ex-stat">
+        <div class="ex-stat-n" style="color:var(--accent)">{{ exhaustion.try_li_count }}</div>
+        <div class="ex-stat-t">Try LinkedIn</div>
+        <div class="ex-stat-d">Sequence done, not yet on LinkedIn</div>
       </div>
-      <div style="background:var(--surface2);border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--orange)">{{ exhaustion.ghost_count }}</div>
-        <div style="font-size:11.5px;font-weight:600;margin-top:3px">High-Open Ghosts</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Opened 3+ times, never replied</div>
+      <div class="ex-stat">
+        <div class="ex-stat-n" style="color:var(--orange)">{{ exhaustion.ghost_count }}</div>
+        <div class="ex-stat-t">High-open ghosts</div>
+        <div class="ex-stat-d">Opened 3+ times, never replied</div>
       </div>
-      <div style="background:var(--surface2);border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--muted)">{{ exhaustion.dead_end_count }}</div>
-        <div style="font-size:11.5px;font-weight:600;margin-top:3px">No Response Anywhere</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:3px">On both channels, no signal</div>
+      <div class="ex-stat">
+        <div class="ex-stat-n" style="color:var(--muted)">{{ exhaustion.dead_end_count }}</div>
+        <div class="ex-stat-t">No response anywhere</div>
+        <div class="ex-stat-d">On both channels, no signal</div>
       </div>
     </div>
 
     {% if exhaustion.ghosts %}
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">High-open ghosts ({{ exhaustion.ghost_count }} total)</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        {% for row in exhaustion.ghosts %}
-        <div style="background:var(--surface2);border-radius:8px;padding:5px 10px;font-size:11.5px">
-          <strong>{{ row.prospect.full_name }}</strong>
-          {% if row.prospect.job_title %}<span class="muted"> · {{ row.prospect.job_title }}</span>{% endif %}
-          <span class="badge orange" style="font-size:9.5px;margin-left:4px">{{ row.prospect.email_open_count }}x open</span>
-          {% if row.hr_lead %}<span class="badge" style="font-size:9.5px;background:#e8f0fe;color:#0077b5;margin-left:2px">on LI</span>{% endif %}
-        </div>
-        {% endfor %}
+    <div class="ex-section" style="margin-bottom:0">
+      <div class="ex-sec-head">
+        <span class="ex-sec-title" style="color:var(--orange)">High-open ghosts</span>
+        <span class="ex-sec-ct" style="background:var(--yellow-bg);color:var(--yellow)">{{ exhaustion.ghost_count }} total</span>
+        <a href="{{ url_for('leads') }}?f=hidden" class="ex-li-btn" style="margin-left:auto">View all in Leads</a>
       </div>
-    </div>
-    {% endif %}
-
-    {% if exhaustion.try_linkedin %}
-    <div>
-      <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Not on LinkedIn yet ({{ exhaustion.try_li_count }} total)</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        {% for row in exhaustion.try_linkedin %}
-        <div style="background:var(--surface2);border-radius:8px;padding:5px 10px;font-size:11.5px">
-          <strong>{{ row.prospect.full_name }}</strong>
-          {% if row.prospect.company_name %}<span class="muted"> · {{ row.prospect.company_name }}</span>{% endif %}
-          {% if row.prospect.linkedin_url %}<a href="{{ row.prospect.linkedin_url }}" target="_blank" style="font-size:10px;margin-left:5px;color:var(--accent)">LI ↗</a>{% endif %}
+      <div class="ex-rows">
+        {% for row in exhaustion.ghosts[:8] %}
+        <div class="ex-row">
+          <div class="ex-av ex-av-o">{{ (row.prospect.first_name or row.prospect.full_name or '?')[0] | upper }}</div>
+          <div class="ex-info">
+            <div class="ex-name">{{ row.prospect.full_name }}</div>
+            <div class="ex-sub">{{ row.prospect.job_title or row.prospect.company_name or '' }}</div>
+          </div>
+          <span class="ex-sig ex-sig-o">{{ row.prospect.email_open_count }}x open</span>
+          {% if row.hr_lead %}<span class="badge" style="font-size:10px;background:#e8f0fe;color:#0077b5;margin-left:4px">on LI</span>{% endif %}
+          {% if row.prospect.linkedin_url %}<a href="{{ row.prospect.linkedin_url }}" target="_blank" class="ex-li-btn">LinkedIn</a>{% endif %}
         </div>
         {% endfor %}
-        {% if exhaustion.try_li_count > exhaustion.try_linkedin|length %}
-        <div style="font-size:11px;color:var(--muted);padding:5px 10px">+{{ exhaustion.try_li_count - exhaustion.try_linkedin|length }} more</div>
+        {% if exhaustion.ghost_count > 8 %}
+        <a href="{{ url_for('leads') }}?f=hidden" class="ex-more" style="display:block;text-decoration:none;color:var(--accent)">View all {{ exhaustion.ghost_count }} in Leads →</a>
         {% endif %}
       </div>
     </div>
@@ -421,4 +491,12 @@
 </div>
 {% endif %}
 
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('intCustomToggle')?.addEventListener('click', function(e) {
+  e.preventDefault();
+  document.getElementById('intDateRange').classList.toggle('show');
+});
+</script>
 {% endblock %}

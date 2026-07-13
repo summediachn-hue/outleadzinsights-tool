@@ -59,6 +59,8 @@
        class="filter-tab {{ 'active' if filt == 'interested' else '' }}">Interested</a>
     <a href="{{ url_for('client_leads', token_str=ct.token, f='meeting', cid=cid) }}"
        class="filter-tab {{ 'active' if filt == 'meeting' else '' }}">Meeting Booked</a>
+    <a href="{{ url_for('client_leads', token_str=ct.token, f='won', cid=cid) }}"
+       class="filter-tab {{ 'active' if filt == 'won' else '' }}">Won</a>
     <a href="{{ url_for('client_leads', token_str=ct.token, f='warm', cid=cid) }}"
        class="filter-tab {{ 'active' if filt == 'warm' else '' }}">High Engagement</a>
   </div>

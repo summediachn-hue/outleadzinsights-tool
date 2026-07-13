@@ -392,10 +392,25 @@ def dashboard():
     start, end, active = _parse_range(request.args)
     aid = g.account_id
     hr_account = g.hr_account
+    life = an.lifetime_stats(account_id=aid)
+
+    wk = an.weekly_kpis(aid) if aid else {}
+    wins = an.recent_wins(aid, limit=8) if aid else []
+
+    forecast = None
+    if aid and life.get("interested", 0) > 0:
+        hist_rate = (life["meetings"] / life["replies"]) if (life.get("replies") and life.get("meetings")) else 0.35
+        forecast = {
+            "interested": life["interested"],
+            "rate_pct": round(hist_rate * 100),
+            "min": max(1, int(life["interested"] * hist_rate * 0.7)),
+            "max": int(life["interested"] * hist_rate * 1.3) + 1,
+        }
+
     return render_template("dashboard.html",
         has_instantly=g.has_instantly,
         metrics=an.dashboard_metrics(start, end, account_id=aid),
-        life=an.lifetime_stats(account_id=aid),
+        life=life,
         funnel=an.funnel(start, end, account_id=aid),
         timing=an.engagement_timing(None, start, end, account_id=aid),
         account=an.account_recommendations(account_id=aid),
@@ -411,6 +426,7 @@ def dashboard():
         uni_funnel=an.unified_funnel(aid) if aid else [],
         gaps=an.gap_lists(aid) if aid else {"email_warm_not_li": [], "li_interested_not_email": []},
         lift=an.channel_lift(aid) if (g.has_instantly and g.has_heyreach and aid) else None,
+        wk=wk, wins=wins, forecast=forecast,
     )
 
 
@@ -573,14 +589,18 @@ def campaign_detail(cid):
 @login_required
 def intelligence():
     aid = g.account_id
+    start, end, active = _parse_range(request.args)
     return render_template("intelligence.html",
-        send_time=an.best_send_time(aid) if (g.has_instantly and aid) else None,
+        send_time=an.best_send_time(aid, start=start, end=end) if (g.has_instantly and aid) else None,
         heat_map=an.company_heat_map(aid) if aid else [],
         gaps=an.gap_lists(aid) if aid else {"email_warm_not_li": [], "li_interested_not_email": []},
         lift=an.channel_lift(aid) if (g.has_instantly and g.has_heyreach and aid) else None,
         uni_funnel=an.unified_funnel(aid) if aid else [],
         icp=an.icp_learner(aid) if aid else None,
         exhaustion=an.lead_exhaustion(aid) if aid else None,
+        timeframes=TIMEFRAMES, active_tf=active,
+        start_str=request.args.get("start", ""),
+        end_str=request.args.get("end", ""),
     )
 
 
@@ -606,10 +626,14 @@ def revenue():
     if redir:
         return redir
     aid = g.account_id
+    start, end, active = _parse_range(request.args)
     return render_template("revenue.html",
         rev=an.revenue_summary(account_id=aid),
-        funnel=an.funnel(account_id=aid),
+        funnel=an.funnel(start, end, account_id=aid),
         sentiment=an.sentiment_breakdown(account_id=aid),
+        timeframes=TIMEFRAMES, active_tf=active,
+        start_str=request.args.get("start", ""),
+        end_str=request.args.get("end", ""),
     )
 
 
@@ -1560,7 +1584,7 @@ def client_overview(token_str):
 
     start, end, active = _parse_range(request.args)
 
-    # Build all-time KPIs directly from Campaign aggregates (account-scoped)
+    # Email KPIs (all-time from Campaign aggregates)
     from sqlalchemy import func as sqlfunc
     row = (db.session.query(
         sqlfunc.sum(Campaign.emails_sent_count),
@@ -1572,30 +1596,93 @@ def client_overview(token_str):
     ).filter(Campaign.account_id == aid).first())
     sent, contacted, opens_u, replies_u, interested_ct, meetings_ct = [int(x or 0) for x in (row or (0,)*6)]
     life = {
-        "sent": sent,
-        "opens": opens_u,
+        "sent": sent, "opens": opens_u,
         "open_rate": round(opens_u / contacted * 100, 1) if contacted else 0.0,
         "replies": replies_u,
         "reply_rate": round(replies_u / contacted * 100, 1) if contacted else 0.0,
-        "interested": interested_ct,
-        "meetings": meetings_ct,
+        "interested": interested_ct, "meetings": meetings_ct,
     }
 
-    funnel_stages = an.funnel(start, end, account_id=aid)
+    # LinkedIn KPIs (if LinkedIn is configured for this account)
+    has_li = HeyReachAccount.query.filter_by(account_id=aid, is_active=True).first() is not None
+    li_kpis = an.heyreach_kpis(aid) if has_li else None
+
+    # Funnel: unified (both channels) if LinkedIn available, else email-only
+    funnel_stages = an.unified_funnel(aid) if has_li else an.funnel(start, end, account_id=aid)
+
+    # Daily trend: use selected range or default to 30 days
+    if start:
+        trend = an.daily_series(start=start, end=end, account_id=aid)
+    else:
+        trend = an.daily_series(days=30, account_id=aid)
+
+    # Pipeline counts
+    pq = _client_prospect_q(aid)
+    pipeline = {
+        "meeting":    pq.filter(Prospect.stage == "Meeting").count(),
+        "interested": pq.filter(Prospect.lt_interest_status == 1).count(),
+        "won":        pq.filter(Prospect.stage == "Won").count(),
+    }
+
+    # Top leads by score
+    all_prospects = pq.all()
+    hr_map = an._build_hr_map(aid)
+    def _ckey(p):
+        return (an._norm(p.first_name or '') + an._norm(p.last_name or ''),
+                an._norm(p.company_name or ''))
+    scored = [(p, an.compute_lead_score(p, hr_map.get(_ckey(p)))) for p in all_prospects]
+    scored.sort(key=lambda x: -x[1])
+    top_leads = [(p, s) for p, s in scored[:10] if s >= 10]
+
     campaigns = (_client_campaign_q(aid)
                  .filter(Campaign.emails_sent_count > 0)
                  .order_by(Campaign.emails_sent_count.desc()).all())
-    warm = an.get_warm_leads(limit=10, account_id=aid)
-    interested = (_client_prospect_q(aid)
-                  .filter(Prospect.lt_interest_status == 1)
-                  .order_by(Prospect.timestamp_last_reply.desc())
-                  .limit(10).all())
+
+    # Week-over-week deltas
+    wk = an.weekly_kpis(aid)
+
+    # Recent wins feed
+    wins = an.recent_wins(aid)
+
+    # Funnel with conversion rates between each consecutive stage
+    funnel_with_rates = []
+    for i, stage in enumerate(funnel_stages):
+        prev_val = funnel_stages[i - 1]["value"] if i > 0 else None
+        conv = round(stage["value"] / prev_val * 100, 1) if prev_val else None
+        funnel_with_rates.append({**stage, "conv_rate": conv})
+
+    # Pipeline forecast using historical reply-to-meeting rate
+    hist_rate = (life["meetings"] / life["replies"]) if (life.get("replies") and life.get("meetings")) else 0.35
+    forecast = {
+        "interested": pipeline["interested"],
+        "active_meetings": pipeline["meeting"],
+        "rate_pct": round(hist_rate * 100),
+        "min": max(1, int(pipeline["interested"] * hist_rate * 0.7)),
+        "max": int(pipeline["interested"] * hist_rate * 1.3) + 1,
+    } if pipeline["interested"] > 0 else None
+
     return render_template("client_overview.html",
-        ct=ct, acct=acct, life=life, funnel=funnel_stages,
-        campaigns=campaigns, warm=warm, interested=interested,
+        ct=ct, acct=acct, life=life, has_li=has_li, li_kpis=li_kpis,
+        funnel=funnel_with_rates, trend=trend, pipeline=pipeline,
+        top_leads=top_leads, campaigns=campaigns,
+        wk=wk, wins=wins, forecast=forecast,
         timeframes=TIMEFRAMES, active_tf=active,
         start_str=request.args.get("start", ""),
         end_str=request.args.get("end", ""),
+    )
+
+
+@app.route("/client/<token_str>/intelligence")
+def client_intelligence(token_str):
+    ct = _get_client_token(token_str)
+    aid = ct.account_id
+    acct = db.session.get(InstantlyAccount, aid)
+    return render_template("client_intelligence.html",
+        ct=ct, acct=acct,
+        heat_map=an.company_heat_map(aid),
+        icp=an.icp_learner(aid),
+        exhaustion=an.lead_exhaustion(aid),
+        gaps=an.gap_lists(aid),
     )
 
 
@@ -1616,6 +1703,8 @@ def client_leads(token_str):
         q = q.filter(Prospect.lt_interest_status == 1)
     elif filt == "meeting":
         q = q.filter(Prospect.stage == "Meeting")
+    elif filt == "won":
+        q = q.filter(Prospect.stage == "Won")
     elif filt == "warm":
         q = q.filter(Prospect.email_open_count >= WARM_THRESHOLD,
                      Prospect.email_reply_count == 0)
