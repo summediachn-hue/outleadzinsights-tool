@@ -31,13 +31,20 @@
     </div>
     {% for p in pipeline[stage][:40] %}
     {% set days_in_stage = ((now - p.stage_changed_at).days) if p.stage_changed_at else none %}
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;{{ 'border-left:3px solid var(--red);' if days_in_stage and days_in_stage > 14 else '' }}">
+    {% set is_cal = p.source == 'calendly' %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;{{ 'border-left:3px solid #0d9488;' if is_cal else ('border-left:3px solid var(--red);' if days_in_stage and days_in_stage > 14 else '') }}">
       <div style="font-size:13px;font-weight:600;margin-bottom:3px">{% if p.is_warm %}<span class="dot orange"></span>{% endif %}{{ p.full_name }}</div>
       {% if p.company_name %}<div style="font-size:11px;color:var(--muted)">{{ p.company_name }}</div>{% endif %}
+      {% if is_cal and p.calendly_scheduled_at %}
+      <div style="font-size:11px;color:#0d9488;font-weight:600;margin-top:4px">&#128197; {{ p.calendly_scheduled_at.strftime('%b %d, %I:%M %p') }}</div>
+      {% endif %}
       <div style="display:flex;gap:5px;margin:8px 0;flex-wrap:wrap">
-        {% if p.email_open_count>0 %}<span class="badge {{ 'orange' if p.email_open_count>=3 else 'gray' }}" style="font-size:10px">{{ p.email_open_count }}× open</span>{% endif %}
-        {% if p.email_reply_count>0 %}<span class="badge green" style="font-size:10px">replied</span>{% endif %}
-        {% if p.interest_label %}<span class="badge blue" style="font-size:10px">{{ p.interest_label }}</span>{% endif %}
+        {% if is_cal %}<span class="badge" style="background:#e0f5f3;color:#0d9488;font-size:10px">Calendly</span>
+        {% else %}
+          {% if p.email_open_count>0 %}<span class="badge {{ 'orange' if p.email_open_count>=3 else 'gray' }}" style="font-size:10px">{{ p.email_open_count }}× open</span>{% endif %}
+          {% if p.email_reply_count>0 %}<span class="badge green" style="font-size:10px">replied</span>{% endif %}
+          {% if p.interest_label %}<span class="badge blue" style="font-size:10px">{{ p.interest_label }}</span>{% endif %}
+        {% endif %}
         {% if days_in_stage is not none %}<span class="badge {{ 'red' if days_in_stage > 14 else 'gray' }}" style="font-size:10px">{{ days_in_stage }}d</span>{% endif %}
       </div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">

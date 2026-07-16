@@ -261,6 +261,11 @@ class Prospect(db.Model):
     do_not_contact = db.Column(db.Boolean, default=False)
     notes = db.Column(db.Text, default="")
 
+    # Source tracking
+    source = db.Column(db.String(30), default="outreach")   # outreach | calendly
+    calendly_event_type = db.Column(db.String(200), default="")
+    calendly_scheduled_at = db.Column(db.DateTime, nullable=True)
+
     # Intelligence
     warm_score = db.Column(db.Float, default=0.0)
     last_activity_at = db.Column(db.DateTime, nullable=True)
@@ -460,6 +465,17 @@ class ClientActivity(db.Model):
 
 
 # ── HeyReach (LinkedIn outreach) ──────────────────────────────────────────────
+
+class CalendlyAccount(db.Model):
+    __tablename__ = "calendly_accounts"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    account_id = db.Column(db.Integer, nullable=False, index=True)
+    webhook_secret = db.Column(db.String(500), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_booking_at = db.Column(db.DateTime, nullable=True)
+    booking_count = db.Column(db.Integer, default=0)
+
 
 class HeyReachAccount(db.Model):
     __tablename__ = "heyreach_accounts"

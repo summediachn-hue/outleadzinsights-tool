@@ -103,11 +103,13 @@
       <tr>
         <th>Client</th>
         <th>Email <span style="font-weight:400;font-size:11px;color:var(--muted)">via Instantly</span></th>
-        <th>in LinkedIn <span style="font-weight:400;font-size:11px;color:var(--muted)">via HeyReach</span></th>
+        <th>LinkedIn <span style="font-weight:400;font-size:11px;color:var(--muted)">via HeyReach</span></th>
+        <th>Calendly <span style="font-weight:400;font-size:11px;color:var(--muted)">inbound</span></th>
         <th>Actions</th>
       </tr>
       {% for a in accounts %}
       {% set hr = hr_by_account.get(a.id) %}
+      {% set cal = cal_by_account.get(a.id) %}
       <tr>
         <td>
           <strong style="font-size:13px">{{ a.name }}</strong>
@@ -134,6 +136,16 @@
           {% endif %}
         </td>
         <td>
+          {% if cal %}
+            <span class="badge" style="background:#e0f5f3;color:#0d9488;font-size:11px">Connected</span>
+            <div style="font-size:11px;color:var(--dim);margin-top:3px">
+              {{ cal.booking_count or 0 }} booking{{ 's' if (cal.booking_count or 0) != 1 }}
+            </div>
+          {% else %}
+            <span style="font-size:12px;color:var(--muted)">not connected</span>
+          {% endif %}
+        </td>
+        <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             {% if a.api_key %}
             <form method="POST" action="{{ url_for('admin_account_sync', aid=a.id) }}" style="display:inline">
@@ -148,6 +160,15 @@
             </form>
             {% else %}
             <button class="btn btn-secondary btn-sm" onclick="openAddLinkedIn({{ a.id }}, {{ a.name|tojson }})">+ Add LinkedIn</button>
+            {% endif %}
+            {% if cal %}
+            <form method="POST" action="{{ url_for('admin_calendly_remove', cid=cal.id) }}" style="display:inline"
+                  onsubmit="return confirm('Disconnect Calendly for {{ a.name }}?')">
+              <button class="btn btn-secondary btn-sm" style="color:var(--red)">Remove Calendly</button>
+            </form>
+            {% else %}
+            <button class="btn btn-secondary btn-sm" style="color:#0d9488;border-color:#a7e8e3"
+                    onclick="openAddCalendly({{ a.id }}, {{ a.name|tojson }})">+ Add Calendly</button>
             {% endif %}
             <form method="POST" action="{{ url_for('admin_account_toggle', aid=a.id) }}" style="display:inline">
               <button class="btn btn-secondary btn-sm">{{ 'Deactivate' if a.is_active else 'Activate' }}</button>
@@ -282,9 +303,42 @@
         <div class="form-row"><label>HeyReach API Key</label><input type="text" name="heyreach_key" placeholder="Leave blank if email only" autocomplete="off"></div>
         <div class="form-row" style="margin-bottom:0"><label>HeyReach Account Name</label><input type="text" name="heyreach_name" placeholder="e.g. Acme LinkedIn"></div>
       </div>
+      <div style="border:1px solid #a7e8e3;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:11.5px;font-weight:700;color:#0d9488;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Calendly inbound (optional)</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.55">Paste the webhook signing key from Calendly Developer Settings. After saving, copy the webhook URL from the Clients table and add it in Calendly.</p>
+        <div class="form-row" style="margin-bottom:0"><label>Calendly Webhook Signing Key</label><input type="text" name="calendly_secret" placeholder="Leave blank if not using Calendly" autocomplete="off"></div>
+      </div>
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal('addClient')">Cancel</button>
         <button type="submit" class="btn btn-primary">Add Client</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Connect Calendly modal ── -->
+<div class="modal-overlay" id="addCalendly">
+  <div class="modal">
+    <h3>Connect Calendly</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:-10px 0 18px">Adding Calendly inbound to: <strong id="addCalendlyClientName"></strong></p>
+    <div style="background:#e0f5f3;border:1px solid #a7e8e3;border-radius:9px;padding:12px 14px;margin-bottom:18px;font-size:12px;color:#0d9488;line-height:1.65">
+      1. Go to <strong>Calendly Developer Settings</strong> and create a webhook subscription.<br>
+      2. Paste the signing key below and click Connect.<br>
+      3. Copy the webhook URL that appears in the table and add it in Calendly.
+    </div>
+    <form method="POST" action="{{ url_for('admin_calendly_add') }}">
+      <input type="hidden" name="account_id" id="addCalendlyAccountId">
+      <div class="form-row"><label>Calendly Webhook Signing Key</label><input type="password" name="webhook_secret" placeholder="whsec_..." required autocomplete="off"></div>
+      <div class="form-row" style="margin-bottom:0">
+        <label>Your Webhook URL <span style="font-weight:400;text-transform:none;letter-spacing:0">(copy into Calendly after saving)</span></label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="addCalendlyUrl" readonly style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:var(--muted)">
+          <button type="button" class="btn btn-secondary" onclick="copyCalendlyUrl()" style="white-space:nowrap">Copy</button>
+        </div>
+      </div>
+      <div class="form-actions" style="margin-top:22px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addCalendly')">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="background:#0d9488;border-color:#0d9488">Connect Calendly</button>
       </div>
     </form>
   </div>
@@ -475,6 +529,23 @@ function openAddEmail(cid, clientName) {
   document.getElementById('addEmailForm').action = '/admin/clients/' + cid + '/add-instantly';
   document.getElementById('addEmailClientName').textContent = clientName;
   openModal('addEmail');
+}
+
+// Add Calendly to existing client
+function openAddCalendly(cid, clientName) {
+  document.getElementById('addCalendlyAccountId').value = cid;
+  document.getElementById('addCalendlyClientName').textContent = clientName;
+  document.getElementById('addCalendlyUrl').value = location.origin + '/webhooks/calendly/' + cid;
+  openModal('addCalendly');
+}
+function copyCalendlyUrl() {
+  var url = document.getElementById('addCalendlyUrl').value;
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = event.target;
+    btn.textContent = 'Copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(function() { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
+  });
 }
 
 // Add LinkedIn channel to existing client
