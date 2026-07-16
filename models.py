@@ -470,9 +470,12 @@ class CalendlyAccount(db.Model):
     __tablename__ = "calendly_accounts"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     account_id = db.Column(db.Integer, nullable=False, index=True)
-    webhook_secret = db.Column(db.String(500), nullable=False)
+    api_token = db.Column(db.String(500), nullable=False)
+    user_uri = db.Column(db.String(500), default="")
+    organization_uri = db.Column(db.String(500), default="")
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
     last_booking_at = db.Column(db.DateTime, nullable=True)
     booking_count = db.Column(db.Integer, default=0)
 

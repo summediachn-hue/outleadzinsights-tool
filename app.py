@@ -32,6 +32,8 @@ from instantly_client import InstantlyClient, InstantlyError
 from sync import run_sync
 from heyreach_client import HeyReachClient, HeyReachError
 from heyreach_sync import run_heyreach_sync
+from calendly_client import CalendlyClient, CalendlyError
+from calendly_sync import run_calendly_sync
 import analytics as an
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -165,12 +167,20 @@ with app.app_context():
         ("CREATE TABLE IF NOT EXISTS calendly_accounts ("
          "id INTEGER PRIMARY KEY AUTOINCREMENT,"
          "account_id INTEGER NOT NULL,"
-         "webhook_secret VARCHAR(500) NOT NULL,"
+         "api_token VARCHAR(500) NOT NULL DEFAULT '',"
+         "user_uri VARCHAR(500) DEFAULT '',"
+         "organization_uri VARCHAR(500) DEFAULT '',"
          "is_active BOOLEAN DEFAULT 1,"
          "created_at DATETIME,"
+         "last_synced_at DATETIME,"
          "last_booking_at DATETIME,"
          "booking_count INTEGER DEFAULT 0)"),
         "CREATE INDEX IF NOT EXISTS ix_calendly_accounts_account_id ON calendly_accounts(account_id)",
+        # Migrate existing rows that used webhook_secret column
+        "ALTER TABLE calendly_accounts ADD COLUMN api_token VARCHAR(500) DEFAULT ''",
+        "ALTER TABLE calendly_accounts ADD COLUMN user_uri VARCHAR(500) DEFAULT ''",
+        "ALTER TABLE calendly_accounts ADD COLUMN organization_uri VARCHAR(500) DEFAULT ''",
+        "ALTER TABLE calendly_accounts ADD COLUMN last_synced_at DATETIME",
         "ALTER TABLE prospects ADD COLUMN source VARCHAR(30) DEFAULT 'outreach'",
         "ALTER TABLE prospects ADD COLUMN calendly_event_type VARCHAR(200) DEFAULT ''",
         "ALTER TABLE prospects ADD COLUMN calendly_scheduled_at DATETIME",
@@ -1387,7 +1397,7 @@ def admin_account_add():
     api_key = request.form.get("api_key", "").strip()
     heyreach_key = request.form.get("heyreach_key", "").strip()
     heyreach_name = request.form.get("heyreach_name", "HeyReach").strip()
-    calendly_secret = request.form.get("calendly_secret", "").strip()
+    calendly_secret = request.form.get("calendly_token", "").strip()
     if not name:
         flash("Client name is required.", "error")
         return redirect(url_for("admin", tab="clients"))
@@ -1412,9 +1422,16 @@ def admin_account_add():
                              account_id=acct.id)
         db.session.add(hr)
     if calendly_secret:
-        cal = CalendlyAccount(webhook_secret=calendly_secret, account_id=acct.id,
-                              created_at=datetime.utcnow())
-        db.session.add(cal)
+        try:
+            _cl = CalendlyClient(calendly_secret)
+            _me = _cl.get_current_user()
+            cal = CalendlyAccount(api_token=calendly_secret,
+                                  user_uri=_me.get("uri", ""),
+                                  organization_uri=_me.get("current_organization", ""),
+                                  account_id=acct.id, created_at=datetime.utcnow())
+            db.session.add(cal)
+        except CalendlyError:
+            flash("Calendly token invalid -- client added without Calendly.", "error")
     db.session.commit()
     channels = []
     if api_key:
@@ -1520,120 +1537,48 @@ def admin_heyreach_toggle(hid):
     return redirect(url_for("admin", tab="clients"))
 
 
-@app.route("/webhooks/calendly/<int:aid>", methods=["POST"])
-def calendly_webhook(aid):
-    cal = CalendlyAccount.query.filter_by(account_id=aid, is_active=True).first()
-    if not cal:
-        return ("", 404)
-
-    # Verify Calendly HMAC-SHA256 signature
-    sig_header = request.headers.get("Calendly-Webhook-Signature", "")
-    raw_body = request.get_data()
-    parts = dict(p.split("=", 1) for p in sig_header.split(",") if "=" in p)
-    ts = parts.get("t", "")
-    v1 = parts.get("v1", "")
-    if ts and v1:
-        to_sign = ts.encode() + b"." + raw_body
-        expected = hmac.new(cal.webhook_secret.encode(), to_sign, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(v1, expected):
-            return ("", 401)
-
-    data = request.get_json(silent=True) or {}
-    if data.get("event") != "invitee.created":
-        return ("", 200)
-
-    payload = data.get("payload", {})
-    invitee = payload.get("invitee", {})
-    event_info = payload.get("event", {})
-    event_type = payload.get("event_type", {})
-
-    email = (invitee.get("email") or "").lower().strip()
-    if not email:
-        return ("", 200)
-
-    raw_name = invitee.get("name") or ""
-    first_name = invitee.get("first_name") or (raw_name.split()[0] if raw_name else "")
-    last_name = invitee.get("last_name") or (raw_name.split()[-1] if len(raw_name.split()) > 1 else "")
-    event_type_name = event_type.get("name", "")
-
-    scheduled_at = None
-    start_str = event_info.get("start_time", "")
-    if start_str:
-        try:
-            from dateutil import parser as _dp
-            scheduled_at = _dp.parse(start_str).replace(tzinfo=None)
-        except Exception:
-            pass
-
-    company, job_title = "", ""
-    for qa in invitee.get("questions_and_answers", []):
-        q = (qa.get("question") or "").lower()
-        a = qa.get("answer") or ""
-        if any(w in q for w in ("company", "organization", "employer")):
-            company = a
-        elif any(w in q for w in ("title", "role", "position", "job")):
-            job_title = a
-
-    existing = Prospect.query.filter_by(email=email, account_id=aid).first()
-    if existing:
-        if existing.stage not in ("Won", "Lost"):
-            existing.stage = "Meeting"
-            existing.stage_changed_at = datetime.utcnow()
-        existing.calendly_event_type = event_type_name
-        existing.calendly_scheduled_at = scheduled_at
-        pid = existing.id
-    else:
-        pid = f"cal_{aid}_{uuid.uuid4().hex[:12]}"
-        p = Prospect(
-            id=pid, email=email,
-            first_name=first_name, last_name=last_name,
-            company_name=company, job_title=job_title,
-            source="calendly", stage="Meeting",
-            stage_changed_at=datetime.utcnow(),
-            calendly_event_type=event_type_name,
-            calendly_scheduled_at=scheduled_at,
-            account_id=aid,
-        )
-        db.session.add(p)
-
-    try:
-        ev = Event(
-            prospect_id=pid, prospect_email=email,
-            type="meeting_booked",
-            occurred_at=scheduled_at or datetime.utcnow(),
-            source="webhook",
-            meta=json.dumps({"source": "calendly", "event_type": event_type_name}),
-            account_id=aid,
-        )
-        db.session.add(ev)
-    except Exception:
-        db.session.rollback()
-
-    cal.last_booking_at = datetime.utcnow()
-    cal.booking_count = (cal.booking_count or 0) + 1
-    db.session.commit()
-    return ("", 200)
-
-
 @app.route("/admin/calendly/add", methods=["POST"])
 @superadmin_required
 def admin_calendly_add():
     account_id = request.form.get("account_id", "").strip()
-    webhook_secret = request.form.get("webhook_secret", "").strip()
-    if not webhook_secret or not account_id:
-        flash("Account and webhook signing key are required.", "error")
+    api_token = request.form.get("api_token", "").strip()
+    if not api_token or not account_id:
+        flash("Account and personal access token are required.", "error")
         return redirect(url_for("admin", tab="clients"))
     try:
         account_id = int(account_id)
     except ValueError:
         flash("Invalid account.", "error")
         return redirect(url_for("admin", tab="clients"))
+    # Verify token and fetch user/org URIs
+    try:
+        client = CalendlyClient(api_token)
+        me = client.get_current_user()
+        user_uri = me.get("uri", "")
+        org_uri = me.get("current_organization", "")
+    except CalendlyError as e:
+        flash(f"Calendly token invalid: {e}", "error")
+        return redirect(url_for("admin", tab="clients"))
     CalendlyAccount.query.filter_by(account_id=account_id).delete()
-    cal = CalendlyAccount(webhook_secret=webhook_secret, account_id=account_id,
+    cal = CalendlyAccount(api_token=api_token, user_uri=user_uri,
+                          organization_uri=org_uri, account_id=account_id,
                           created_at=datetime.utcnow())
     db.session.add(cal)
     db.session.commit()
-    flash("Calendly connected. Copy the webhook URL below and add it in Calendly developer settings.", "success")
+    flash("Calendly connected. Click Sync Calendly to pull bookings.", "success")
+    return redirect(url_for("admin", tab="clients"))
+
+
+@app.route("/admin/calendly/<int:cid>/sync", methods=["POST"])
+@superadmin_required
+def admin_calendly_sync(cid):
+    cal = CalendlyAccount.query.get_or_404(cid)
+    try:
+        s = run_calendly_sync(cal)
+        flash(f"Calendly synced: {s['new_leads']} new leads, {s['updated']} updated"
+              f" from {s['bookings']} bookings.", "success")
+    except Exception as e:
+        flash(f"Calendly sync failed: {e}", "error")
     return redirect(url_for("admin", tab="clients"))
 
 
