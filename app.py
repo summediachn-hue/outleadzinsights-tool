@@ -283,6 +283,7 @@ def inject_nav_context():
         "hr_nav": getattr(g, "hr_account", None),
         "has_instantly": getattr(g, "has_instantly", True),
         "has_heyreach": getattr(g, "has_heyreach", False),
+        "has_calendly": getattr(g, "has_calendly", False),
     }
 
 
@@ -327,6 +328,7 @@ def load_user():
     g.user_accounts = []
     g.has_instantly = True   # safe default — superadmin / unauthenticated sees all
     g.has_heyreach = False
+    g.has_calendly = False
     g.hr_account = None
     uid = session.get('user_id')
     if uid:
@@ -359,6 +361,9 @@ def load_user():
                     account_id=g.account_id, is_active=True
                 ).first()
                 g.has_heyreach = g.hr_account is not None
+                g.has_calendly = CalendlyAccount.query.filter_by(
+                    account_id=g.account_id, is_active=True
+                ).first() is not None
         else:
             session.clear()
 
@@ -796,12 +801,16 @@ def lead_update(email):
 @app.route("/crm")
 @login_required
 def crm():
-    active_tab = request.args.get("tab", "linkedin" if (g.has_heyreach and not g.has_instantly) else "email")
+    default_tab = ("calendly" if (g.has_calendly and not g.has_instantly and not g.has_heyreach)
+                   else "linkedin" if (g.has_heyreach and not g.has_instantly)
+                   else "email")
+    active_tab = request.args.get("tab", default_tab)
 
-    # Email pipeline
+    # Email pipeline (outreach prospects only)
     email_pipeline = {s: [] for s in PIPELINE_STAGES}
     if g.has_instantly:
-        for p in _pq().order_by(Prospect.warm_score.desc()).all():
+        for p in (_pq().filter(Prospect.source != 'calendly')
+                       .order_by(Prospect.warm_score.desc()).all()):
             stage = p.stage if p.stage in PIPELINE_STAGES else "New"
             email_pipeline[stage].append(p)
 
@@ -816,9 +825,18 @@ def crm():
             stage = lead.li_stage if lead.li_stage in LI_PIPELINE_STAGES else "Contacted"
             li_pipeline[stage].append(lead)
 
+    # Calendly inbound pipeline
+    cal_pipeline = {s: [] for s in PIPELINE_STAGES}
+    if g.has_calendly:
+        for p in (_pq().filter_by(source='calendly')
+                       .order_by(Prospect.calendly_scheduled_at.desc().nullslast()).all()):
+            stage = p.stage if p.stage in PIPELINE_STAGES else "Meeting"
+            cal_pipeline[stage].append(p)
+
     return render_template("crm.html",
         pipeline=email_pipeline, stages=PIPELINE_STAGES,
         li_pipeline=li_pipeline, li_stages=LI_PIPELINE_STAGES,
+        cal_pipeline=cal_pipeline,
         active_tab=active_tab,
         now=datetime.utcnow())
 
