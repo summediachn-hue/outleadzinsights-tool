@@ -716,12 +716,26 @@ def revenue():
 @app.route("/leads")
 @login_required
 def leads():
+    ftype = request.args.get("f", "all")
+
+    # Calendly tab: no email channel required
+    if ftype == "calendly":
+        if not g.has_calendly:
+            return redirect(url_for("leads"))
+        cal_leads = (_pq().filter_by(source='calendly')
+                     .order_by(Prospect.calendly_scheduled_at.desc().nullslast()).all())
+        return render_template("leads.html",
+            leads=[], cal_leads=cal_leads, ftype=ftype, cid=None,
+            campaigns=[], stages=PIPELINE_STAGES, dispositions=DISPOSITIONS,
+            scores={}, actions={}, warm_threshold=WARM_THRESHOLD)
+
+    # All other tabs require email channel
     redir = _email_channel_required()
     if redir:
         return redir
-    ftype = request.args.get("f", "all")
+
     cid = request.args.get("cid")
-    q = _pq()
+    q = _pq().filter(Prospect.source != 'calendly')
     if cid:
         q = q.filter_by(campaign_id=cid)
     if ftype == "warm":
@@ -754,7 +768,7 @@ def leads():
         scores  = {}
         actions = {}
     return render_template("leads.html",
-        leads=leads, ftype=ftype, cid=cid,
+        leads=leads, cal_leads=[], ftype=ftype, cid=cid,
         campaigns=_cq().order_by(Campaign.name).all(),
         stages=PIPELINE_STAGES, dispositions=DISPOSITIONS,
         scores=scores, actions=actions, warm_threshold=WARM_THRESHOLD)
@@ -801,16 +815,12 @@ def lead_update(email):
 @app.route("/crm")
 @login_required
 def crm():
-    default_tab = ("calendly" if (g.has_calendly and not g.has_instantly and not g.has_heyreach)
-                   else "linkedin" if (g.has_heyreach and not g.has_instantly)
-                   else "email")
-    active_tab = request.args.get("tab", default_tab)
+    active_tab = request.args.get("tab", "linkedin" if (g.has_heyreach and not g.has_instantly) else "email")
 
-    # Email pipeline (outreach prospects only)
+    # Email pipeline — all prospects including Calendly inbound
     email_pipeline = {s: [] for s in PIPELINE_STAGES}
-    if g.has_instantly:
-        for p in (_pq().filter(Prospect.source != 'calendly')
-                       .order_by(Prospect.warm_score.desc()).all()):
+    if g.has_instantly or g.has_calendly:
+        for p in _pq().order_by(Prospect.warm_score.desc()).all():
             stage = p.stage if p.stage in PIPELINE_STAGES else "New"
             email_pipeline[stage].append(p)
 
@@ -825,18 +835,9 @@ def crm():
             stage = lead.li_stage if lead.li_stage in LI_PIPELINE_STAGES else "Contacted"
             li_pipeline[stage].append(lead)
 
-    # Calendly inbound pipeline
-    cal_pipeline = {s: [] for s in PIPELINE_STAGES}
-    if g.has_calendly:
-        for p in (_pq().filter_by(source='calendly')
-                       .order_by(Prospect.calendly_scheduled_at.desc().nullslast()).all()):
-            stage = p.stage if p.stage in PIPELINE_STAGES else "Meeting"
-            cal_pipeline[stage].append(p)
-
     return render_template("crm.html",
         pipeline=email_pipeline, stages=PIPELINE_STAGES,
         li_pipeline=li_pipeline, li_stages=LI_PIPELINE_STAGES,
-        cal_pipeline=cal_pipeline,
         active_tab=active_tab,
         now=datetime.utcnow())
 

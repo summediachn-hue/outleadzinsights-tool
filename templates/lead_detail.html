@@ -13,7 +13,9 @@
 .tl-date{font-size:11px;color:var(--dim);margin-top:2px}
 </style>
 
-<div style="margin-bottom:14px"><a href="{{ url_for('leads') }}" style="color:var(--muted);font-size:13px;text-decoration:none">← Leads</a></div>
+<div style="margin-bottom:14px">
+  <a href="{{ url_for('leads') }}{{ '?f=calendly' if lead.source == 'calendly' else '' }}" style="color:var(--muted);font-size:13px;text-decoration:none">← Leads</a>
+</div>
 
 <div style="display:grid;grid-template-columns:1fr 320px;gap:20px">
   <div>
@@ -33,12 +35,39 @@
       </div>
     </div>
 
+    {% if lead.source == 'calendly' %}
+    <div class="table-wrap" style="border-left:3px solid #0d9488;margin-bottom:16px">
+      <div class="table-header"><h2 style="color:#0d9488">Calendly Meeting</h2><span class="badge" style="background:#e0f5f3;color:#0d9488">Inbound</span></div>
+      <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:13px">
+        <div>
+          <div class="label muted" style="font-size:10.5px;text-transform:uppercase">Scheduled</div>
+          <div style="margin-top:3px;font-size:15px;font-weight:600;color:#0d9488">
+            {{ lead.calendly_scheduled_at.strftime('%A, %B %d, %Y') if lead.calendly_scheduled_at else 'Not recorded' }}
+          </div>
+          <div style="margin-top:2px;font-size:13px;color:var(--muted)">
+            {{ lead.calendly_scheduled_at.strftime('%I:%M %p') if lead.calendly_scheduled_at else '' }}
+          </div>
+        </div>
+        <div>
+          <div class="label muted" style="font-size:10.5px;text-transform:uppercase">Event Type</div>
+          <div style="margin-top:3px">{{ lead.calendly_event_type or 'Not recorded' }}</div>
+        </div>
+        {% if lead.job_title %}
+        <div>
+          <div class="label muted" style="font-size:10.5px;text-transform:uppercase">Job Title</div>
+          <div style="margin-top:3px">{{ lead.job_title }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
     <div class="cards" style="grid-template-columns:repeat(4,1fr)">
       <div class="card"><div class="label">Opens</div><div class="value {{ 'orange' if lead.email_open_count>=3 else '' }}" style="font-size:24px">{{ lead.email_open_count }}</div></div>
       <div class="card"><div class="label">Clicks</div><div class="value" style="font-size:24px">{{ lead.email_click_count }}</div></div>
       <div class="card"><div class="label">Replies</div><div class="value {{ 'green' if lead.email_reply_count>0 else '' }}" style="font-size:24px">{{ lead.email_reply_count }}</div></div>
       <div class="card"><div class="label">Warm Score</div><div class="value purple" style="font-size:24px">{{ lead.warm_score }}</div></div>
     </div>
+    {% endif %}
 
     {% if lead.email_open_count>=3 and lead.email_reply_count==0 %}
     <div class="callout warning">

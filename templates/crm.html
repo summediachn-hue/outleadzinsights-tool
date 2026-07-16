@@ -6,25 +6,15 @@
   <p>Move leads through stages. Changes save instantly.</p>
 </div>
 
-{# ── Tab switcher ── #}
-{% set tab_count = (1 if has_instantly else 0) + (1 if has_heyreach else 0) + (1 if has_calendly else 0) %}
-{% if tab_count > 1 %}
-<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
-  {% if has_instantly %}
+{# ── Tab switcher (email / LinkedIn when both connected) ── #}
+{% if has_instantly and has_heyreach %}
+<div style="display:flex;gap:6px;margin-bottom:20px">
   <a href="?tab=email" class="filter-pill {{ 'active' if active_tab=='email' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:.12s">
     Email Pipeline <span style="opacity:.65;font-weight:400">{{ pipeline.values()|map('length')|sum }}</span>
   </a>
-  {% endif %}
-  {% if has_heyreach %}
   <a href="?tab=linkedin" class="filter-pill {{ 'active' if active_tab=='linkedin' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:.12s">
     in LinkedIn Pipeline <span style="opacity:.65;font-weight:400">{{ li_pipeline.values()|map('length')|sum }}</span>
   </a>
-  {% endif %}
-  {% if has_calendly %}
-  <a href="?tab=calendly" class="filter-pill {{ 'active' if active_tab=='calendly' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid #a7e8e3;color:#0d9488;background:var(--surface);transition:.12s">
-    Calendly Inbound <span style="opacity:.65;font-weight:400">{{ cal_pipeline.values()|map('length')|sum }}</span>
-  </a>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -105,56 +95,6 @@
     </div>
     {% else %}
     <div style="border:1px dashed var(--border);border-radius:8px;padding:18px;text-align:center;color:var(--muted);font-size:12px">Empty</div>
-    {% endfor %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{# ══════════════════════════════════════════════════════════════
-   CALENDLY INBOUND PIPELINE
-   ══════════════════════════════════════════════════════════════ #}
-{% if active_tab == 'calendly' and has_calendly %}
-{% set cal_stages = ["Meeting", "Won", "Lost"] %}
-<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:60vh">
-  {% for stage in cal_stages %}
-  {% set stage_color = '#0d9488' if stage=='Meeting' else ('#16a34a' if stage=='Won' else 'var(--red)') %}
-  <div style="min-width:260px;flex:1;display:flex;flex-direction:column;gap:10px">
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:13px;font-weight:600;color:{{ stage_color }}">{{ stage }}</span>
-      <span class="badge" style="background:#e0f5f3;color:#0d9488">{{ cal_pipeline[stage]|length }}</span>
-    </div>
-    {% for p in cal_pipeline[stage][:40] %}
-    {% set days_since = ((now - p.calendly_scheduled_at).days) if p.calendly_scheduled_at else none %}
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;border-left:3px solid #0d9488">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:3px">
-        <div style="font-size:13px;font-weight:600">{{ p.full_name }}</div>
-        <span class="badge" style="background:#e0f5f3;color:#0d9488;font-size:10px;flex-shrink:0">Calendly</span>
-      </div>
-      {% if p.company_name %}<div style="font-size:11px;color:var(--muted)">{{ p.company_name }}</div>{% endif %}
-      {% if p.job_title %}<div style="font-size:10.5px;color:var(--dim)">{{ p.job_title }}</div>{% endif %}
-      {% if p.calendly_scheduled_at %}
-      <div style="font-size:11px;color:#0d9488;font-weight:600;margin-top:6px">
-        Meeting: {{ p.calendly_scheduled_at.strftime('%b %d, %I:%M %p') }}
-      </div>
-      {% endif %}
-      {% if p.calendly_event_type %}
-      <div style="font-size:10.5px;color:var(--dim);margin-top:2px">{{ p.calendly_event_type }}</div>
-      {% endif %}
-      <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap">
-        {% if days_since is not none %}
-        <span class="badge gray" style="font-size:10px">{{ days_since }}d ago</span>
-        {% endif %}
-      </div>
-      <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">
-        {% set i = cal_stages.index(stage) %}
-        {% if i>0 %}<button class="move-email btn btn-secondary btn-sm" data-email="{{ p.email }}" data-stage="{{ cal_stages[i-1] }}">←</button>{% endif %}
-        {% if i<cal_stages|length-1 %}<button class="move-email btn btn-primary btn-sm" data-email="{{ p.email }}" data-stage="{{ cal_stages[i+1] }}" style="background:#0d9488;border-color:#0d9488">→</button>{% endif %}
-        <a href="{{ url_for('lead_detail', email=p.email) }}" class="btn btn-secondary btn-sm" style="margin-left:auto">View</a>
-      </div>
-    </div>
-    {% else %}
-    <div style="border:1px dashed #a7e8e3;border-radius:8px;padding:18px;text-align:center;color:#0d9488;font-size:12px;opacity:.7">No leads yet</div>
     {% endfor %}
   </div>
   {% endfor %}

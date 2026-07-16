@@ -28,12 +28,17 @@ th input[type=checkbox]{margin:0}
 </div>
 
 <div class="filter-bar">
+  {% if ftype != 'calendly' %}
   <a href="{{ url_for('leads') }}{% if cid %}?cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='all' }}">All</a>
   <a href="{{ url_for('leads') }}?f=hidden{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='hidden' }}">Hidden Intent</a>
   <a href="{{ url_for('leads') }}?f=warm{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='warm' }}">Warm ({{ warm_threshold }}+ opens)</a>
   <a href="{{ url_for('leads') }}?f=replied{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='replied' }}">Replied</a>
   <a href="{{ url_for('leads') }}?f=interested{% if cid %}&cid={{ cid }}{% endif %}" class="filter-chip {{ 'active' if ftype=='interested' }}">Interested</a>
-  {% if campaigns %}
+  {% endif %}
+  {% if has_calendly %}
+  <a href="{{ url_for('leads') }}?f=calendly" class="filter-chip {{ 'active' if ftype=='calendly' }}" style="{{ 'background:#0d9488;border-color:#0d9488;color:#fff' if ftype=='calendly' else 'color:#0d9488;border-color:#a7e8e3' }}">Calendly Inbound</a>
+  {% endif %}
+  {% if campaigns and ftype != 'calendly' %}
   <form method="get" action="{{ url_for('leads') }}" style="margin-left:auto">
     <input type="hidden" name="f" value="{{ ftype }}">
     <select name="cid" onchange="this.form.submit()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:20px;font-size:12px;cursor:pointer">
@@ -44,7 +49,37 @@ th input[type=checkbox]{margin:0}
   {% endif %}
 </div>
 
-{% if leads %}
+{# ── Calendly inbound table ── #}
+{% if ftype == 'calendly' %}
+{% if cal_leads %}
+<div class="table-wrap">
+  <div class="table-header"><h2>{{ cal_leads|length }} Calendly lead{{ 's' if cal_leads|length!=1 }}</h2></div>
+  <table>
+    <tr>
+      <th>Name</th><th>Email</th><th>Company</th><th>Job Title</th><th>Meeting</th><th>Event Type</th><th>Stage</th><th></th>
+    </tr>
+    {% for l in cal_leads %}
+    <tr>
+      <td><strong>{{ l.full_name }}</strong></td>
+      <td style="font-size:12px;color:var(--muted)">{{ l.email }}</td>
+      <td class="muted">{{ l.company_name or '-' }}</td>
+      <td class="muted" style="font-size:12px">{{ l.job_title or '-' }}</td>
+      <td style="font-size:12px;color:#0d9488;font-weight:600;white-space:nowrap">
+        {{ l.calendly_scheduled_at.strftime('%b %d, %Y %I:%M %p') if l.calendly_scheduled_at else '-' }}
+      </td>
+      <td style="font-size:12px;color:var(--muted)">{{ l.calendly_event_type or '-' }}</td>
+      <td><span class="badge {{ 'green' if l.stage=='Won' else 'red' if l.stage=='Lost' else 'orange' }}">{{ l.stage }}</span></td>
+      <td><a href="{{ url_for('lead_detail', email=l.email) }}" class="btn btn-secondary btn-sm">View</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No Calendly leads yet. Connect Calendly in Admin and click Sync.</div>
+{% endif %}
+
+{# ── Regular outreach leads table ── #}
+{% elif leads %}
 <div class="table-wrap">
   <div class="table-header"><h2 id="leadCount">{{ leads|length }} lead{{ 's' if leads|length!=1 }}</h2></div>
   <table id="leadsTable">
