@@ -534,7 +534,6 @@ function openAddEmail(cid, clientName) {
 function openAddCalendly(cid, clientName) {
   document.getElementById('addCalendlyAccountId').value = cid;
   document.getElementById('addCalendlyClientName').textContent = clientName;
-  document.getElementById('addCalendlyUrl').value = location.origin + '/webhooks/calendly/' + cid;
   openModal('addCalendly');
 }
 // Add LinkedIn channel to existing client
