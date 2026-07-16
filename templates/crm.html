@@ -12,17 +12,17 @@
 <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
   {% if has_instantly %}
   <a href="?tab=email" class="filter-pill {{ 'active' if active_tab=='email' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:.12s">
-    Email Pipeline <span style="opacity:.65;font-weight:400">{{ pipeline.values()|sum(attribute='__len__') }}</span>
+    Email Pipeline <span style="opacity:.65;font-weight:400">{{ pipeline.values()|map('length')|sum }}</span>
   </a>
   {% endif %}
   {% if has_heyreach %}
   <a href="?tab=linkedin" class="filter-pill {{ 'active' if active_tab=='linkedin' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:.12s">
-    in LinkedIn Pipeline <span style="opacity:.65;font-weight:400">{{ li_pipeline.values()|sum(attribute='__len__') }}</span>
+    in LinkedIn Pipeline <span style="opacity:.65;font-weight:400">{{ li_pipeline.values()|map('length')|sum }}</span>
   </a>
   {% endif %}
   {% if has_calendly %}
   <a href="?tab=calendly" class="filter-pill {{ 'active' if active_tab=='calendly' }}" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;border:1px solid #a7e8e3;color:#0d9488;background:var(--surface);transition:.12s">
-    Calendly Inbound <span style="opacity:.65;font-weight:400">{{ cal_pipeline.values()|sum(attribute='__len__') }}</span>
+    Calendly Inbound <span style="opacity:.65;font-weight:400">{{ cal_pipeline.values()|map('length')|sum }}</span>
   </a>
   {% endif %}
 </div>
