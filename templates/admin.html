@@ -152,14 +152,14 @@
               <button class="btn btn-primary btn-sm">Sync Email</button>
             </form>
             {% else %}
-            <button class="btn btn-secondary btn-sm" onclick="openAddEmail({{ a.id }}, {{ a.name|tojson }})">+ Add Email</button>
+            <button class="btn btn-secondary btn-sm" onclick='openAddEmail({{ a.id }}, {{ a.name|tojson }})'>+ Add Email</button>
             {% endif %}
             {% if hr %}
             <form method="POST" action="{{ url_for('admin_heyreach_sync', hid=hr.id) }}" style="display:inline">
               <button class="btn btn-secondary btn-sm">Sync LinkedIn</button>
             </form>
             {% else %}
-            <button class="btn btn-secondary btn-sm" onclick="openAddLinkedIn({{ a.id }}, {{ a.name|tojson }})">+ Add LinkedIn</button>
+            <button class="btn btn-secondary btn-sm" onclick='openAddLinkedIn({{ a.id }}, {{ a.name|tojson }})'>+ Add LinkedIn</button>
             {% endif %}
             {% if cal %}
             <form method="POST" action="{{ url_for('admin_calendly_sync', cid=cal.id) }}" style="display:inline">
@@ -171,7 +171,7 @@
             </form>
             {% else %}
             <button class="btn btn-secondary btn-sm" style="color:#0d9488;border-color:#a7e8e3"
-                    onclick="openAddCalendly({{ a.id }}, {{ a.name|tojson }})">+ Add Calendly</button>
+                    onclick='openAddCalendly({{ a.id }}, {{ a.name|tojson }})'>+ Add Calendly</button>
             {% endif %}
             <form method="POST" action="{{ url_for('admin_account_toggle', aid=a.id) }}" style="display:inline">
               <button class="btn btn-secondary btn-sm">{{ 'Deactivate' if a.is_active else 'Activate' }}</button>
