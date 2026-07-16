@@ -69,6 +69,45 @@ def _set_sqlite_pragmas(dbapi_conn, _rec):
 
 with app.app_context():
     db.create_all()
+
+    # One-time fix: rebuild calendly_accounts if it still has the legacy
+    # webhook_secret NOT NULL column (created before the PAT-based approach).
+    try:
+        _db_path = os.path.join(BASEDIR, "instance", "outreach.db")
+        _raw = _sqlite3.connect(_db_path)
+        _row = _raw.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='calendly_accounts'"
+        ).fetchone()
+        if _row and "webhook_secret" in _row[0]:
+            _raw.execute(
+                "CREATE TABLE IF NOT EXISTS _cal_fix ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "account_id INTEGER NOT NULL,"
+                "api_token VARCHAR(500) NOT NULL DEFAULT '',"
+                "user_uri VARCHAR(500) DEFAULT '',"
+                "organization_uri VARCHAR(500) DEFAULT '',"
+                "is_active BOOLEAN DEFAULT 1,"
+                "created_at DATETIME,"
+                "last_synced_at DATETIME,"
+                "last_booking_at DATETIME,"
+                "booking_count INTEGER DEFAULT 0)"
+            )
+            _raw.execute(
+                "INSERT OR IGNORE INTO _cal_fix "
+                "(id, account_id, api_token, user_uri, organization_uri, is_active,"
+                " created_at, last_synced_at, last_booking_at, booking_count) "
+                "SELECT id, account_id, COALESCE(api_token,''), COALESCE(user_uri,''),"
+                "       COALESCE(organization_uri,''), COALESCE(is_active,1), created_at,"
+                "       last_synced_at, last_booking_at, COALESCE(booking_count,0) "
+                "FROM calendly_accounts"
+            )
+            _raw.execute("DROP TABLE calendly_accounts")
+            _raw.execute("ALTER TABLE _cal_fix RENAME TO calendly_accounts")
+            _raw.commit()
+        _raw.close()
+    except Exception:
+        pass
+
     for stmt in [
         "ALTER TABLE prospects ADD COLUMN stage_changed_at DATETIME",
         "ALTER TABLE campaigns ADD COLUMN account_id INTEGER",
