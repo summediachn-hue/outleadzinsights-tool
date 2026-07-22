@@ -155,7 +155,23 @@ class InstantlyClient:
     # ── Campaigns ─────────────────────────────────────────────────────────────
 
     def list_campaigns(self) -> List[Dict]:
-        return self._paginate_get("/campaigns", {})
+        # Instantly v2 defaults to active only; fetch all statuses so paused/
+        # completed campaigns get their status updated in the local DB too.
+        seen: Dict[str, Dict] = {}
+        for status_code in (1, 2, 3, 0, -1):  # Active, Paused, Completed, Draft, Error
+            try:
+                for c in self._paginate_get("/campaigns", {"status": status_code}):
+                    cid = c.get("id")
+                    if cid:
+                        seen[cid] = c
+            except Exception:
+                pass
+        # Fallback: unfiltered call catches anything the status loop missed
+        for c in self._paginate_get("/campaigns", {}):
+            cid = c.get("id")
+            if cid:
+                seen[cid] = c
+        return list(seen.values())
 
     def campaign_overview(self, campaign_id: Optional[str] = None) -> Dict:
         """Aggregate analytics. With id → that campaign; without → all combined."""
