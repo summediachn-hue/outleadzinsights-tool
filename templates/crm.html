@@ -21,7 +21,7 @@
 {# ══════════════════════════════════════════════════════════════
    EMAIL PIPELINE
    ══════════════════════════════════════════════════════════════ #}
-{% if active_tab == 'email' and has_instantly %}
+{% if active_tab == 'email' and (has_instantly or has_calendly) %}
 <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:60vh">
   {% for stage in stages %}
   <div style="min-width:230px;flex:1;display:flex;flex-direction:column;gap:10px">
@@ -36,7 +36,7 @@
       <div style="font-size:13px;font-weight:600;margin-bottom:3px">{% if p.is_warm %}<span class="dot orange"></span>{% endif %}{{ p.full_name }}</div>
       {% if p.company_name %}<div style="font-size:11px;color:var(--muted)">{{ p.company_name }}</div>{% endif %}
       {% if is_cal and p.calendly_scheduled_at %}
-      <div style="font-size:11px;color:#0d9488;font-weight:600;margin-top:4px">&#128197; {{ p.calendly_scheduled_at.strftime('%b %d, %I:%M %p') }}</div>
+      <div style="font-size:11px;color:#0d9488;font-weight:600;margin-top:4px">{{ p.calendly_scheduled_at.strftime('%b %d, %I:%M %p') }}</div>
       {% endif %}
       <div style="display:flex;gap:5px;margin:8px 0;flex-wrap:wrap">
         {% if is_cal %}<span class="badge" style="background:#e0f5f3;color:#0d9488;font-size:10px">Calendly</span>
