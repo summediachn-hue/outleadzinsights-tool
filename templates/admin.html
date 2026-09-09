@@ -151,6 +151,7 @@
             <form method="POST" action="{{ url_for('admin_account_sync', aid=a.id) }}" style="display:inline">
               <button class="btn btn-primary btn-sm">Sync Email</button>
             </form>
+            <button class="btn btn-secondary btn-sm" onclick='openUpdateKey({{ a.id }}, {{ a.name|tojson }})'>Update Key</button>
             {% else %}
             <button class="btn btn-secondary btn-sm" onclick='openAddEmail({{ a.id }}, {{ a.name|tojson }})'>+ Add Email</button>
             {% endif %}
@@ -288,6 +289,21 @@
     </table>
   </div>
   {% endif %}
+</div>
+
+<!-- ── Update API Key modal ── -->
+<div class="modal-overlay" id="updateKey">
+  <div class="modal">
+    <h3>Update Instantly API Key</h3>
+    <form method="POST" id="updateKeyForm">
+      <div class="form-row"><label>Account</label><input type="text" id="updateKeyName" disabled style="background:var(--surface2)"></div>
+      <div class="form-row"><label>New API Key</label><input type="text" name="api_key" placeholder="Paste new Instantly API key" required autocomplete="off"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('updateKey').classList.remove('open')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Key</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- ── Add Client modal ── -->
@@ -524,6 +540,12 @@ document.querySelector('[data-tab="tokens"]').click();
 {% endif %}
 
 // Add Email channel to existing client
+function openUpdateKey(aid, accountName) {
+  document.getElementById('updateKeyForm').action = '/admin/accounts/' + aid + '/update-key';
+  document.getElementById('updateKeyName').value = accountName;
+  openModal('updateKey');
+}
+
 function openAddEmail(cid, clientName) {
   document.getElementById('addEmailForm').action = '/admin/clients/' + cid + '/add-instantly';
   document.getElementById('addEmailClientName').textContent = clientName;

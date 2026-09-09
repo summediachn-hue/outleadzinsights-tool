@@ -1516,6 +1516,20 @@ def admin_client_add_instantly(cid):
     return redirect(url_for("admin", tab="clients"))
 
 
+@app.route("/admin/accounts/<int:aid>/update-key", methods=["POST"])
+@superadmin_required
+def admin_account_update_key(aid):
+    acct = InstantlyAccount.query.get_or_404(aid)
+    new_key = request.form.get("api_key", "").strip()
+    if not new_key:
+        flash("API key cannot be empty.", "error")
+        return redirect(url_for("admin", tab="clients"))
+    acct.api_key = new_key
+    db.session.commit()
+    flash(f"API key updated for {acct.name}. Click Sync to pull latest data.", "success")
+    return redirect(url_for("admin", tab="clients"))
+
+
 @app.route("/admin/accounts/<int:aid>/toggle", methods=["POST"])
 @superadmin_required
 def admin_account_toggle(aid):
