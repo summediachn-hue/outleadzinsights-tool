@@ -1,0 +1,65 @@
+{% extends "client_base.html" %}
+{% block title %}Deliverability · {{ acct.name }}{% endblock %}
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <h2 style="font-size:20px;font-weight:700;margin:0">Deliverability</h2>
+  <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Mailbox health and sending account status.</p>
+</div>
+
+{% if summary %}
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+    <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Total Mailboxes</div>
+    <div style="font-size:28px;font-weight:700;margin-top:6px">{{ summary.total }}</div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+    <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Healthy</div>
+    <div style="font-size:28px;font-weight:700;color:var(--green);margin-top:6px">{{ summary.healthy }}</div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+    <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Issues</div>
+    <div style="font-size:28px;font-weight:700;{{ 'color:var(--red)' if summary.issues > 0 else 'color:var(--muted)' }};margin-top:6px">{{ summary.issues }}</div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+    <div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Warming</div>
+    <div style="font-size:28px;font-weight:700;color:var(--accent);margin-top:6px">{{ summary.warming }}</div>
+  </div>
+</div>
+{% endif %}
+
+{% if mailboxes %}
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="border-bottom:1px solid var(--border);background:var(--surface2)">
+        <th style="padding:10px 16px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Mailbox</th>
+        <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Status</th>
+        <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Warmup Score</th>
+        <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:600">Inbox Rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in mailboxes %}
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:12px 16px;font-weight:500">{{ m.email }}</td>
+        <td style="padding:12px 12px">
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ 'var(--green)' if m.health_state=='healthy' else ('var(--orange)' if m.health_state in ('ok','warming') else 'var(--red)') }}"></span>
+            {{ m.state_label }}
+          </span>
+        </td>
+        <td style="padding:12px 12px;text-align:right;color:{{ 'var(--green)' if (m.warmup_score or 0) >= 75 else ('var(--orange)' if (m.warmup_score or 0) >= 50 else 'var(--muted)') }}">
+          {{ m.warmup_score or '-' }}
+        </td>
+        <td style="padding:12px 12px;text-align:right;color:{{ 'var(--green)' if (m.inbox_rate or 0) >= 90 else ('var(--orange)' if (m.inbox_rate or 0) >= 70 else 'var(--red)') }}">
+          {% if m.inbox_rate %}{{ m.inbox_rate }}%{% else %}-{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:14px">No mailbox data available. Sync to load.</div>
+{% endif %}
+{% endblock %}

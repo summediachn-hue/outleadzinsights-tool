@@ -1,0 +1,34 @@
+{% extends "client_base.html" %}
+{% block title %}Pipeline · {{ acct.name }}{% endblock %}
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <h2 style="font-size:20px;font-weight:700;margin:0">Pipeline</h2>
+  <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Live prospect pipeline across all stages.</p>
+</div>
+
+<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;min-height:60vh">
+  {% for stage in stages %}
+  <div style="min-width:220px;flex:1;display:flex;flex-direction:column;gap:10px">
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;font-weight:600">{{ stage }}</span>
+      <span style="background:var(--accent-bg);color:var(--accent);font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px">{{ pipeline[stage]|length }}</span>
+    </div>
+    {% for p in pipeline[stage][:40] %}
+    {% set days_in_stage = ((now - p.stage_changed_at).days) if p.stage_changed_at else none %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;{{ 'border-left:3px solid var(--red);' if days_in_stage and days_in_stage > 14 else '' }}">
+      <div style="font-size:13px;font-weight:600;margin-bottom:2px">{{ p.full_name }}</div>
+      {% if p.company_name %}<div style="font-size:11px;color:var(--muted);margin-bottom:6px">{{ p.company_name }}</div>{% endif %}
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
+        {% if p.email_open_count >= 3 %}<span style="background:var(--orange-bg,#fff4e5);color:var(--orange);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:600">{{ p.email_open_count }}x open</span>{% endif %}
+        {% if p.email_reply_count > 0 %}<span style="background:var(--green-bg,#e8f9f0);color:var(--green);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:600">replied</span>{% endif %}
+        {% if p.interest_label %}<span style="background:var(--accent-bg);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:20px">{{ p.interest_label }}</span>{% endif %}
+        {% if days_in_stage is not none %}<span style="background:{{ 'var(--red-bg,#fdecea)' if days_in_stage > 14 else 'var(--surface2)' }};color:{{ 'var(--red)' if days_in_stage > 14 else 'var(--muted)' }};font-size:10px;padding:2px 6px;border-radius:20px">{{ days_in_stage }}d</span>{% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div style="border:1px dashed var(--border);border-radius:8px;padding:18px;text-align:center;color:var(--muted);font-size:12px">Empty</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

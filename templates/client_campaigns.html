@@ -1,0 +1,62 @@
+{% extends "client_base.html" %}
+{% block title %}Campaigns · {{ acct.name }}{% endblock %}
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <h2 style="font-size:20px;font-weight:700;margin:0">Campaigns</h2>
+  <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Performance with automatic health diagnosis.</p>
+</div>
+
+{% if data %}
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="border-bottom:1px solid var(--border);background:var(--surface2)">
+        <th style="padding:10px 16px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Campaign</th>
+        <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Status</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Leads</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Sent</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Open %</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Reply %</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Bounce</th>
+        <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted)">Warm</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in data %}
+      {% set c = row.c %}
+      {% set open_pct = (c.open_count_unique / c.contacted_count * 100) | round(1) if c.contacted_count else 0 %}
+      {% set reply_pct = (c.reply_count_unique / c.contacted_count * 100) | round(1) if c.contacted_count else 0 %}
+      {% set bounce_pct = (c.bounced_count / c.emails_sent_count * 100) | round(1) if c.emails_sent_count else 0 %}
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:12px 16px;font-weight:600;max-width:280px">
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+        </td>
+        <td style="padding:12px 12px">
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ 'var(--green)' if c.status_code==1 else ('var(--muted)' if c.status_code in (2,3) else 'var(--red)') }}"></span>
+            {{ c.status_label }}
+          </span>
+        </td>
+        <td style="padding:12px 12px;text-align:right">{{ c.contacted_count or 0 }}</td>
+        <td style="padding:12px 12px;text-align:right">{{ c.emails_sent_count or 0 }}</td>
+        <td style="padding:12px 12px;text-align:right;{{ 'color:var(--green);font-weight:600' if open_pct >= 30 else ('color:var(--orange)' if open_pct >= 15 else 'color:var(--red)') }}">
+          {{ open_pct }}%
+        </td>
+        <td style="padding:12px 12px;text-align:right;{{ 'color:var(--green);font-weight:600' if reply_pct >= 3 else ('color:var(--orange)' if reply_pct >= 1 else 'color:var(--red)') }}">
+          {{ reply_pct }}%
+        </td>
+        <td style="padding:12px 12px;text-align:right;{{ 'color:var(--red);font-weight:600' if bounce_pct >= 3 else 'color:var(--muted)' }}">
+          {{ bounce_pct }}%
+        </td>
+        <td style="padding:12px 12px;text-align:right">
+          {% if row.warm > 0 %}<span style="background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">{{ row.warm }}</span>{% else %}<span style="color:var(--muted)">0</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:14px">No campaigns yet.</div>
+{% endif %}
+{% endblock %}

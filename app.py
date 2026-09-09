@@ -2019,6 +2019,48 @@ def client_lead_note(token_str, prospect_id):
     return redirect(request.referrer or url_for("client_leads", token_str=token_str))
 
 
+@app.route("/client/<token_str>/campaigns")
+def client_campaigns(token_str):
+    ct = _get_client_token(token_str)
+    aid = ct.account_id
+    acct = db.session.get(InstantlyAccount, aid)
+    campaigns = (_client_campaign_q(aid)
+                 .order_by(Campaign.emails_sent_count.desc()).all())
+    data = []
+    for c in campaigns:
+        warm = (_client_prospect_q(aid)
+                .filter_by(campaign_id=c.id)
+                .filter(Prospect.email_open_count >= WARM_THRESHOLD,
+                        Prospect.email_reply_count == 0).count())
+        data.append({"c": c, "warm": warm})
+    return render_template("client_campaigns.html", ct=ct, acct=acct, data=data)
+
+
+@app.route("/client/<token_str>/pipeline")
+def client_pipeline(token_str):
+    ct = _get_client_token(token_str)
+    aid = ct.account_id
+    acct = db.session.get(InstantlyAccount, aid)
+    pipeline = {s: [] for s in PIPELINE_STAGES}
+    for p in (_client_prospect_q(aid)
+              .order_by(Prospect.warm_score.desc()).all()):
+        stage = p.stage if p.stage in PIPELINE_STAGES else "New"
+        pipeline[stage].append(p)
+    return render_template("client_pipeline.html",
+        ct=ct, acct=acct, pipeline=pipeline, stages=PIPELINE_STAGES,
+        now=datetime.utcnow())
+
+
+@app.route("/client/<token_str>/deliverability")
+def client_deliverability(token_str):
+    ct = _get_client_token(token_str)
+    aid = ct.account_id
+    acct = db.session.get(InstantlyAccount, aid)
+    summary = an.deliverability_summary(account_id=aid)
+    return render_template("client_deliverability.html",
+        ct=ct, acct=acct, mailboxes=summary.get("accounts", []), summary=summary)
+
+
 @app.route("/client/<token_str>/thread-by-email")
 def client_thread_by_email(token_str):
     ct = _get_client_token(token_str)
