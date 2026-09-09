@@ -514,6 +514,7 @@ def sync():
         flash("No Instantly API key configured.", "error")
         return redirect(request.referrer or url_for("dashboard"))
     try:
+        db.session.rollback()  # clear any stale/locked transaction before sync
         s = run_sync(client, account_id=g.account_id)
         if g.account_id:
             acct = db.session.get(InstantlyAccount, g.account_id)
@@ -521,6 +522,7 @@ def sync():
                 acct.last_synced_at = datetime.utcnow()
                 db.session.commit()
     except Exception as e:
+        db.session.rollback()
         log.exception("sync failed")
         flash(f"Sync failed: {e}", "error")
         return redirect(request.referrer or url_for("dashboard"))
@@ -1719,12 +1721,19 @@ def _auto_sync_loop(interval_secs):
             with app.app_context():
                 accounts = InstantlyAccount.query.filter_by(is_active=True).all()
                 if accounts:
+                    done = 0
                     for acct in accounts:
-                        c = InstantlyClient(acct.api_key.strip())
-                        run_sync(c, account_id=acct.id)
-                        acct.last_synced_at = datetime.utcnow()
-                    db.session.commit()
-                    log.info(f"Auto-sync: {len(accounts)} account(s) done")
+                        try:
+                            db.session.rollback()
+                            c = InstantlyClient(acct.api_key.strip())
+                            run_sync(c, account_id=acct.id)
+                            acct.last_synced_at = datetime.utcnow()
+                            db.session.commit()
+                            done += 1
+                        except Exception as e:
+                            db.session.rollback()
+                            log.warning(f"Auto-sync failed for {acct.name}: {e}")
+                    log.info(f"Auto-sync: {done}/{len(accounts)} account(s) done")
                 else:
                     c = _client()
                     if c:
